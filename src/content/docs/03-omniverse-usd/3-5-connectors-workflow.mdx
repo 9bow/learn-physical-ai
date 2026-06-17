@@ -1,0 +1,209 @@
+---
+title: "Connector와 워크플로"
+description: Omniverse Connector 생태계와 Nucleus 협업 시스템을 이해하고, Physical AI 개발을 위한 USD 기반 통합 워크플로를 구성하는 방법을 습득한다.
+sidebar:
+  order: 5
+learning_objectives:
+  - "Omniverse Connector의 역할과 주요 종류를 설명할 수 있다"
+  - "Nucleus를 활용한 팀 협업 워크플로를 설계할 수 있다"
+  - "URDF에서 Isaac Sim USD 씬까지의 전체 임포트 파이프라인을 이해한다"
+prerequisites:
+  - "3-4-materials-rtx"
+estimated_minutes: 30
+references:
+  - title: "NVIDIA Isaac Sim URDF Importer 문서"
+    url: "https://docs.isaacsim.omniverse.nvidia.com"
+    accessed: "2026-06-17"
+  - title: "NVIDIA Omniverse Connector 문서"
+    url: "https://docs.omniverse.nvidia.com/connect"
+    accessed: "2026-06-17"
+---
+
+import Quiz from '../../../components/learning/Quiz.tsx';
+
+## Connector 생태계 개요
+
+Omniverse Connector는 기존의 다양한 소프트웨어 도구들과 Omniverse USD 파이프라인을 연결하는 **플러그인·브릿지 소프트웨어 모음**입니다. 로봇 개발, 건축 설계, 영화 제작, 산업 시뮬레이션 등 다양한 도메인의 도구들이 Connector를 통해 Omniverse 생태계에 연결됩니다.
+
+Connector의 핵심 기능은 두 가지입니다. 첫째, **포맷 변환**: 각 도구의 고유한 데이터 형식을 USD로 변환하거나 USD에서 해당 형식으로 내보냅니다. 둘째, **라이브 동기화**: 지원되는 경우 Nucleus를 통해 실시간으로 변경 사항을 주고받습니다.
+
+```text
+Omniverse Connector 생태계
+
+DCC·설계 도구                    로봇·시뮬레이션
+┌────────────┐                  ┌────────────────────┐
+│  Blender   │──Connector──▶    │                    │
+├────────────┤                  │                    │
+│    Maya    │──Connector──▶    │    Omniverse       │
+├────────────┤                  │    Nucleus 서버     │
+│  3ds Max   │──Connector──▶    │   (USD 저장소)     │
+├────────────┤                  │                    │
+│   Revit    │──Connector──▶    │                    │
+└────────────┘                  └──────────┬─────────┘
+                                           │
+CAD·엔지니어링                             │ USD 스트리밍
+┌────────────┐                            │
+│ SolidWorks │──Connector──▶             ▼
+├────────────┤                  ┌────────────────────┐
+│ Fusion 360 │──Connector──▶   │    Isaac Sim       │
+├────────────┤                  │    Drive Sim       │
+│ AutoCAD    │──Connector──▶   │    Omniverse View  │
+└────────────┘                  └────────────────────┘
+
+로봇 포맷 전용 Importer
+┌────────────┐
+│  URDF      │──Importer──▶  Isaac Sim USD 씬
+│  MJCF      │──Importer──▶  Isaac Sim USD 씬
+└────────────┘
+```
+
+## 로봇 개발에서 핵심 Connector
+
+### URDF Importer — ROS 로봇 모델 가져오기
+
+URDF(Unified Robot Description Format)는 ROS(Robot Operating System) 생태계에서 로봇의 링크·관절 구조, 충돌 모델, 시각적 메시를 XML 형식으로 기술하는 표준 포맷입니다. 대부분의 오픈소스 로봇(Franka Emika Panda, Universal Robots UR10, Boston Dynamics Spot 등)은 URDF 파일로 배포됩니다.
+
+Isaac Sim의 URDF Importer는 이 URDF 파일을 Isaac Sim이 시뮬레이션할 수 있는 USD 씬으로 변환합니다. 임포트 과정에서 다음 요소들이 자동으로 처리됩니다.
+
+```text
+URDF → Isaac Sim USD 변환 과정
+
+URDF 파일 구조               Isaac Sim USD 결과
+────────────────────         ────────────────────────────
+<robot name="panda">    →    /World/panda (Xform)
+  <link name="base">   →      /World/panda/base (Mesh + CollisionAPI)
+  <link name="link0">  →      /World/panda/link0 (Mesh + RigidBodyAPI)
+  <joint name="j1"     →      /World/panda/joint1 (PhysicsRevoluteJoint)
+    type="revolute">
+    <limit lower="-2.9"→        joint.lower_limit = -2.9
+           upper="2.9">         joint.upper_limit = 2.9
+  <visual>             →      머티리얼 + 메시 임포트
+  <collision>          →      ConvexHull 충돌 형상 생성
+```
+
+임포트 후에는 반드시 **Articulation 설정**을 확인해야 합니다. Isaac Sim에서 로봇을 물리 기반으로 제어하려면 루트 Prim에 `ArticulationRootAPI`가 적용되어야 하고, 각 관절에 `DriveAPI`가 올바르게 설정되어야 합니다. URDF Importer가 이를 자동으로 처리하지만, 임포트 후 Joint Drive 파라미터(stiffness, damping)는 직접 조정이 필요한 경우가 많습니다.
+
+### MJCF Importer — MuJoCo 모델 가져오기
+
+MJCF(MuJoCo XML Format)는 DeepMind의 MuJoCo 물리 엔진에서 사용하는 로봇 기술 형식입니다. OpenAI Gym·Gymnasium 환경의 많은 로봇 모델(Ant, HalfCheetah, Humanoid 등)이 MJCF로 정의되어 있습니다.
+
+Isaac Sim은 MJCF Importer도 제공해 MuJoCo 기반 환경에서 개발된 로봇 모델을 Isaac Sim/Isaac Lab으로 이전할 수 있습니다. MuJoCo와 Isaac Sim의 물리 파라미터(마찰 모델, 관절 제한 등)에 차이가 있으므로, 임포트 후 물리 파라미터 튜닝이 필요합니다.
+
+### CAD 및 DCC Connector
+
+산업 현장 시뮬레이션에서는 실제 공장 설비의 CAD 모델을 Omniverse로 가져와 디지털 트윈을 구성합니다. SolidWorks, Fusion 360, Revit 같은 CAD 소프트웨어용 Connector가 제공되며, 공식 지원 목록은 공식 문서에서 최신 정보를 확인하는 것이 권장됩니다.
+
+## Nucleus — 협업의 중심
+
+### Nucleus 아키텍처
+
+Nucleus는 Omniverse의 **공유 저장소 및 협업 서버**입니다. 파일 서버처럼 USD 파일을 저장하고 클라이언트에 제공하지만, 일반 파일 서버와 결정적으로 다른 점은 **변경 사항의 실시간 브로드캐스트**입니다.
+
+클라이언트 A가 씬의 특정 Attribute 값을 변경하면, Nucleus는 변경된 델타(delta) 데이터를 같은 씬을 바라보는 모든 클라이언트에게 즉시 전파합니다. 이를 통해 여러 사람이 동시에 같은 씬을 편집하고 결과를 실시간으로 확인할 수 있습니다.
+
+```text
+Nucleus 협업 구조
+
+┌──────────────────────────────────────────────────────────┐
+│                     Nucleus 서버                         │
+│                                                          │
+│  /Projects/                                              │
+│  └── /robot_project/                                     │
+│      ├── base_scene.usd        ← 기본 씬                 │
+│      ├── robot_assets/         ← 로봇 모델 자산          │
+│      │   └── franka.usd                                  │
+│      └── experiments/          ← 실험별 씬               │
+│          ├── exp_001.usd                                  │
+│          └── exp_002.usd                                  │
+└────────────────┬─────────────────────────────────────────┘
+                 │ omniverse:// 프로토콜
+        ┌────────┼────────┐
+        ▼        ▼        ▼
+   Isaac Sim  Omniverse  로봇팀
+   (시뮬레이션)  View     클라이언트
+               (시각화)
+```
+
+### Nucleus 접속 방식
+
+개발 단계에서는 로컬 머신에서 Nucleus를 실행합니다. 팀 협업이 필요한 경우 네트워크 서버에 Nucleus를 배포하고 `omniverse://<서버주소>/path/to/file.usd` 형식의 URL로 접근합니다.
+
+Isaac Sim에서 Nucleus 경로로 씬을 열면 다른 도구나 팀원이 해당 씬을 수정할 때 Isaac Sim이 변경 사항을 자동으로 수신합니다. 로봇 모델 팀이 로봇 링크를 수정하면 시뮬레이션 팀의 Isaac Sim이 자동으로 업데이트된 모델로 전환됩니다.
+
+## USD 기반 통합 워크플로
+
+Physical AI 프로젝트의 전형적인 USD 파이프라인은 다음 단계로 구성됩니다.
+
+```text
+Physical AI 개발 USD 파이프라인
+
+1단계: 자산 준비
+   CAD/URDF ──Importer──▶ USD 자산 (Nucleus 저장)
+   환경 모델 ──Connector──▶ USD 씬 (Nucleus 저장)
+
+2단계: 씬 구성
+   USD 자산 참조(Reference)
+   + 머티리얼/조명 설정
+   + 물리 파라미터 설정
+   = 기본 훈련 씬 (base_scene.usd)
+
+3단계: 도메인 랜덤화 파이프라인
+   base_scene.usd
+   + VariantSet (머티리얼 변형)
+   + Replicator 랜덤화 설정
+   = 수천 가지 변형 씬 자동 생성
+
+4단계: 학습 및 검증
+   Isaac Lab: 강화학습 훈련 (병렬 시뮬레이션)
+   Replicator: 합성 데이터 생성 (인식 모델 학습)
+   ROS2 Bridge: 실로봇 테스트 준비
+
+5단계: 실로봇 배포
+   학습된 정책 → ROS2 노드 → 실물 로봇
+   디지털 트윈으로 배포 전 검증
+```
+
+### 실전 워크플로 예시: 산업용 로봇 팔 셋업
+
+실제 프로젝트에서 Franka Emika Panda 로봇 팔을 Isaac Sim에 셋업하는 전형적인 과정을 따라가면 Connector와 USD 워크플로의 통합적인 그림을 볼 수 있습니다.
+
+```text
+Franka Panda Isaac Sim 셋업 워크플로
+
+①  URDF 파일 입수
+   franka_description 패키지(ROS) 또는 Franka 공식 GitHub
+
+②  URDF Importer 실행
+   Isaac Sim → File → Import → URDF
+   → franka_panda.urdf 선택
+   → 임포트 옵션 설정 (fix base link, self collision 등)
+
+③  USD로 저장
+   → Nucleus 경로에 franka_panda.usd 저장
+   → 다른 씬에서 Reference로 재사용 가능
+
+④  씬 구성
+   → 새 씬에서 franka_panda.usd Reference 추가
+   → Ground Plane, 작업 테이블, 대상 물체 배치
+   → 조명 추가 (DistantLight, SphereLight)
+   → Physics Scene 설정
+
+⑤  관절 드라이브 설정 검증
+   → Stage 트리에서 각 관절 선택
+   → Physics > Drive 탭에서 stiffness/damping 확인
+   → 너무 뻣뻣하거나 너무 느슨한 경우 파라미터 조정
+
+⑥  Python API 연동 (다음 섹션에서 상세 다룸)
+   → Isaac Sim Python 스크립트로 관절 제어
+   → ROS2 Bridge로 외부 컨트롤러 연결
+```
+
+## 섹션 마무리: Omniverse·USD 생태계의 의미
+
+지금까지 살펴본 Omniverse와 USD 생태계는 Physical AI 개발의 **공통 인프라 계층**입니다. 개별 도구를 익히는 것보다 이 생태계의 통합 철학—USD를 공통 언어로 한 데이터 파이프라인—을 이해하는 것이 더 중요합니다.
+
+로봇 개발팀, 시뮬레이션팀, 데이터팀, 학습팀이 각자의 도구를 사용하면서도 Nucleus를 통해 동일한 USD 자산을 공유하고, Composition을 통해 각자의 관심사를 분리된 레이어로 관리하는 것. 이것이 Omniverse가 가능하게 하는 워크플로의 핵심입니다.
+
+다음 섹션에서는 이 인프라 위에 구축된 Isaac Sim의 구체적인 사용법—설치부터 로봇 임포트, 씬 구성, Python 스크립팅, 합성 데이터 생성까지—을 실전적으로 다룹니다.
+
+<Quiz section="03-omniverse-usd" client:load />

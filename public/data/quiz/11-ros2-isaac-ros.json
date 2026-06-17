@@ -1,0 +1,146 @@
+[
+  {
+    "id": "q1",
+    "question": "ROS 2에서 'Node(노드)'란?",
+    "options": [
+      "특정 기능을 수행하는 독립적인 실행 프로세스",
+      "토픽 메시지의 데이터 타입 정의",
+      "로봇 URDF 파일의 링크 요소",
+      "ROS 2 패키지 저장소의 단위"
+    ],
+    "answer": 0,
+    "explanation": "ROS 2 Node는 단일 기능(센서 읽기, 모터 제어 등)을 담당하는 독립적인 실행 단위로, 퍼블리셔/서브스크라이버/서비스/액션을 통해 다른 노드와 통신합니다."
+  },
+  {
+    "id": "q2",
+    "question": "ROS 2 'Topic(토픽)'과 'Service(서비스)'의 차이점은?",
+    "options": [
+      "토픽은 바이너리 데이터, 서비스는 텍스트 데이터만 전송한다",
+      "토픽은 비동기 단방향 메시지 스트림, 서비스는 동기 요청-응답 통신이다",
+      "토픽은 ROS 1에서만, 서비스는 ROS 2에서만 사용된다",
+      "토픽은 1:1, 서비스는 1:N 통신이다"
+    ],
+    "answer": 1,
+    "explanation": "Topic은 발행자(Publisher)가 구독자(Subscriber)에게 지속적으로 비동기 메시지를 전송하는 방식이고, Service는 클라이언트가 서버에 요청하고 응답을 기다리는 동기 통신입니다."
+  },
+  {
+    "id": "q3",
+    "question": "ROS 2 'Action(액션)'이 Service와 다른 특징은?",
+    "options": [
+      "Action은 멀티캐스트를 지원하지 않는다",
+      "Action은 텍스트 메시지만 전송한다",
+      "Action은 장시간 실행 과제에서 중간 피드백과 취소(Cancel)를 지원한다",
+      "Action은 Topic보다 지연이 더 작다"
+    ],
+    "answer": 2,
+    "explanation": "ROS 2 Action은 내비게이션·매니퓰레이션 등 장시간 과제에서 진행 상황 피드백(Feedback)과 중간 취소(Preempt)를 지원하는 비동기 통신 인터페이스입니다."
+  },
+  {
+    "id": "q4",
+    "question": "ROS 2가 ROS 1에서 DDS(Data Distribution Service)로 미들웨어를 변경한 주요 이유는?",
+    "options": [
+      "ROS Master 노드의 성능을 개선하기 위해",
+      "Python 지원을 중단하기 위해",
+      "DDS가 오픈소스가 아니기 때문에",
+      "실시간 성능, 분산 시스템 지원, QoS 설정, 단일 마스터 의존성 제거를 위해"
+    ],
+    "answer": 3,
+    "explanation": "DDS 기반 미들웨어로 전환하여 ROS 1의 단일 Master 의존성을 제거하고, 실시간 통신, QoS 정책 설정, 멀티로봇 분산 시스템 지원을 개선했습니다."
+  },
+  {
+    "id": "q5",
+    "question": "ROS 2에서 패키지를 빌드하는 공식 빌드 도구는?",
+    "options": [
+      "colcon",
+      "cmake --build",
+      "pip install",
+      "catkin_make"
+    ],
+    "answer": 0,
+    "explanation": "ROS 2에서는 `colcon`이 공식 빌드 도구로, 여러 패키지를 병렬로 빌드하고 의존성을 자동 처리합니다. ROS 1의 catkin_make를 대체합니다."
+  },
+  {
+    "id": "q6",
+    "question": "Isaac ROS의 주요 역할은?",
+    "options": [
+      "Isaac Sim의 렌더링 엔진",
+      "NVIDIA GPU 가속 ROS 2 패키지(GEMs) 모음으로 인식·SLAM·딥러닝 파이프라인을 최적화",
+      "ROS 2 대신 사용하는 독립형 로봇 미들웨어",
+      "Jetson 없이 PC에서만 동작하는 시뮬레이션 도구"
+    ],
+    "answer": 1,
+    "explanation": "Isaac ROS(GEMs)는 NVIDIA GPU 최적화된 ROS 2 패키지로, 비전·SLAM·딥러닝 추론 등을 GPU에서 가속하여 실시간 로봇 인식 파이프라인 성능을 높입니다."
+  },
+  {
+    "id": "q7",
+    "question": "NITROS(NVIDIA Isaac Transport for ROS)의 목적은?",
+    "options": [
+      "ROS 2 DDS 미들웨어 대체 구현",
+      "Isaac Sim의 물리 엔진 백엔드",
+      "ROS 2 노드 간 GPU 메모리 데이터를 CPU 복사 없이 전달하여 지연을 줄이는 제로 카피 전송 프레임워크",
+      "Jetson과 클라우드 간 모델 동기화 도구"
+    ],
+    "answer": 2,
+    "explanation": "NITROS는 Isaac ROS 파이프라인에서 GPU 메모리의 데이터를 CPU로 복사하지 않고 노드 간 직접 전달(Zero-Copy)하여 카메라/LiDAR 처리 파이프라인의 지연과 대역폭을 최적화합니다."
+  },
+  {
+    "id": "q8",
+    "question": "Nav2(Navigation 2)가 ROS 2 로봇에서 담당하는 기능은?",
+    "options": [
+      "카메라 이미지 기반 객체 감지",
+      "강화학습 정책 훈련",
+      "로봇 팔의 역기구학 계산",
+      "자율 이동 로봇의 경로 계획, 장애물 회피, 내비게이션 실행"
+    ],
+    "answer": 3,
+    "explanation": "Nav2는 ROS 2 기반 이동 로봇의 자율 내비게이션 스택으로, SLAM/지도 서버, 경로 계획(Global/Local Planner), 장애물 회피, 행동 트리 기반 실행 등을 제공합니다."
+  },
+  {
+    "id": "q9",
+    "question": "MoveIt 2가 ROS 2에서 제공하는 주요 기능은?",
+    "options": [
+      "로봇 팔의 모션 계획(Motion Planning), 역기구학, 충돌 회피",
+      "드론의 비행 경로 최적화",
+      "딥러닝 모델 학습 파이프라인",
+      "이동 로봇의 자율 내비게이션"
+    ],
+    "answer": 0,
+    "explanation": "MoveIt 2는 로봇 팔 모션 계획의 ROS 2 표준 프레임워크로, 역기구학 해법, 충돌 인식 경로 계획, 실행 인터페이스를 통합 제공합니다."
+  },
+  {
+    "id": "q10",
+    "question": "Isaac Sim과 ROS 2를 연결하는 브리지의 역할은?",
+    "options": [
+      "Isaac Sim의 USD 씬을 ROS 2 패키지로 변환",
+      "Isaac Sim의 센서 데이터와 제어 명령을 ROS 2 토픽/서비스로 게시·구독하여 ROS 2 스택과 통합",
+      "Isaac Sim의 물리 엔진을 ROS 2 노드로 실행",
+      "ROS 2 패키지를 Isaac Sim 확장으로 변환"
+    ],
+    "answer": 1,
+    "explanation": "Isaac Sim ROS 2 브리지는 시뮬레이션 내 카메라·LiDAR·관절 상태 등을 ROS 2 토픽으로 발행하고, 속도 명령 등을 구독하여 ROS 2 알고리즘(Nav2, MoveIt 등)과 통합 테스트를 가능하게 합니다."
+  },
+  {
+    "id": "q11",
+    "question": "ROS 2에서 'QoS(Quality of Service)' 정책을 설정하는 이유는?",
+    "options": [
+      "GPU 메모리 할당을 최적화하기 위해",
+      "노드 실행 우선순위를 CPU 스케줄러에 전달하기 위해",
+      "네트워크 환경에 따라 메시지 신뢰성, 지속성, 지연 등을 조절하여 실시간성을 보장하기 위해",
+      "ROS 2 패키지 버전을 관리하기 위해"
+    ],
+    "answer": 2,
+    "explanation": "ROS 2 QoS 정책(Reliability, Durability, History, Deadline 등)을 통해 신뢰성 전송(Reliable) vs 최선 전달(Best Effort) 등을 상황에 맞게 설정하여 실시간 로봇 시스템을 구성합니다."
+  },
+  {
+    "id": "q12",
+    "question": "Isaac ROS에서 'AprilTag' 패키지를 사용하는 목적은?",
+    "options": [
+      "RGB-D 카메라로 3D 포인트 클라우드 생성",
+      "LiDAR 기반 SLAM 지도 작성",
+      "딥러닝 기반 객체 분류",
+      "시각 마커(AprilTag)를 감지하여 로봇의 위치·자세를 추정하는 GPU 가속 태그 감지"
+    ],
+    "answer": 3,
+    "explanation": "Isaac ROS AprilTag는 GPU 가속으로 AprilTag 시각 마커를 실시간 감지하여 로봇의 절대 위치·자세 추정(Fiducial Localization)에 활용합니다."
+  }
+]

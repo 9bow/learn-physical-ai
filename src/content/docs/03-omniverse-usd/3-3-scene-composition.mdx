@@ -1,0 +1,217 @@
+---
+title: "Scene Composition: Layers·References·Variants"
+description: USD Composition Arcs의 핵심 메커니즘인 레이어, 참조, 변형자를 이해하고, 비파괴 씬 편집 워크플로를 습득한다.
+sidebar:
+  order: 3
+learning_objectives:
+  - "USD Composition Arcs의 종류와 역할을 설명할 수 있다"
+  - "SubLayer, Reference, Payload, Variant의 차이를 구분하고 적절히 활용할 수 있다"
+  - "LIVRPS 강도 순서를 이해하고 오버라이드 충돌을 예측할 수 있다"
+prerequisites:
+  - "3-2-openusd-fundamentals"
+estimated_minutes: 35
+references:
+  - title: "OpenUSD 공식 문서 - Composition Arcs"
+    url: "https://openusd.org/release/glossary.html#usdglossary-compositionarcs"
+    accessed: "2026-06-17"
+  - title: "NVIDIA USD 개발자 가이드"
+    url: "https://developer.nvidia.com/usd"
+    accessed: "2026-06-17"
+---
+
+## Composition이란 무엇인가
+
+USD의 가장 독창적이고 강력한 기능은 **Composition(합성)** 시스템입니다. Composition은 여러 소스(레이어, 파일, 변형 정의)의 데이터를 하나의 일관된 씬으로 조합하는 메커니즘입니다.
+
+할리우드 영화 제작 파이프라인을 상상해보세요. 캐릭터 모델, 배경, 조명, 특수효과가 각각 다른 팀에 의해 독립적으로 개발되지만 최종 장면에서는 하나로 합쳐집니다. USD의 Composition은 이런 협업 워크플로를 기술적으로 지원하는 시스템입니다.
+
+로봇 시뮬레이션 맥락에서 Composition의 가치는 더 명확합니다. 기본 로봇 모델, 환경 설정, 실험별 변형 조건, 센서 파라미터를 별도 파일로 관리하면서 시뮬레이션 실행 시 합성해 사용할 수 있습니다.
+
+## Composition Arcs 종류
+
+USD는 6가지 Composition Arc를 제공합니다. 이를 **LIVRPS**라는 약자로 기억합니다(뒤에서 이 순서의 의미를 설명합니다).
+
+```text
+LIVRPS — Composition Arcs 강도 순서 (강한 것 → 약한 것)
+
+L  Locals          (로컬 오피니언 — 가장 강함)
+I  Inherits        (클래스 상속)
+V  VariantSets     (변형자)
+R  References      (외부 파일 참조)
+P  Payloads        (지연 로딩 참조)
+S  Specializes     (특수화 — 가장 약함)
+```
+
+### SubLayer — 레이어 스택
+
+SubLayer는 여러 `.usd` 파일을 스택처럼 쌓는 메커니즘입니다. 상위(먼저 나열된) 레이어가 하위 레이어보다 높은 우선순위를 가집니다.
+
+```python
+# 개념 이해용 의사코드 — .usda SubLayer 선언 예시
+#usda 1.0
+(
+    subLayers = [
+        @./overrides/lighting_override.usda@,  # 상위 = 높은 우선순위
+        @./base/environment.usda@,             # 하위 = 낮은 우선순위
+    ]
+)
+```
+
+SubLayer는 씬 전체에 영향을 미치는 **글로벌 오버라이드**에 적합합니다. 예를 들어 기본 환경 씬 위에 조명 오버라이드 레이어를 얹으면, 조명만 달라진 변형 씬을 원본을 수정하지 않고 만들 수 있습니다.
+
+```text
+SubLayer 합성 시각화
+
+base_scene.usda         override.usda
+┌────────────────┐      ┌────────────────┐
+│ /World/Light   │      │ /World/Light   │
+│   intensity:100│  +   │   intensity:500│ ← 오버라이드 적용
+│ /World/Robot   │      │                │
+│   pos: [0,0,0] │      │                │
+└────────────────┘      └────────────────┘
+           ↓ 합성 결과
+┌────────────────────────────────┐
+│ /World/Light  intensity: 500   │ ← override 값 적용
+│ /World/Robot  pos: [0,0,0]     │ ← base 값 유지
+└────────────────────────────────┘
+```
+
+### Reference — 외부 파일 참조
+
+Reference는 **다른 USD 파일의 특정 Prim을 현재 씬으로 가져오는** 메커니즘입니다. 로봇 모델, 환경 자산, 가구 등 재사용 가능한 요소를 별도 파일로 관리하고 여러 씬에서 참조하는 방식으로 사용합니다.
+
+```python
+# 개념 이해용 의사코드 — Reference 선언
+def Xform "Robot" (
+    references = @./assets/franka_panda.usda@</Robot>
+)
+{
+    # 참조된 Prim 위에 로컬 오버라이드 추가 가능
+    double3 xformOp:translate = (1.0, 0.0, 0.5)
+}
+```
+
+Reference의 중요한 특성은 **참조 위에 로컬 오버라이드를 추가**할 수 있다는 점입니다. 로봇 팔 모델 파일을 참조하되, 특정 씬에서만 색상을 바꾸고 싶다면 참조 파일은 건드리지 않고 참조를 가져온 Prim에 머티리얼 오버라이드만 추가하면 됩니다.
+
+### Payload — 지연 로딩 참조
+
+Payload는 Reference와 유사하지만 **필요할 때까지 로딩을 미루는(lazy loading)** 특성을 가집니다. 수백 개의 복잡한 자산이 있는 대형 씬에서 초기 로딩 시간을 줄이기 위해 사용합니다.
+
+로봇 공장 씬처럼 수천 개의 객체가 있는 환경에서, 카메라 뷰포트에 들어오는 객체만 실제로 로드하는 방식으로 메모리와 성능을 관리할 수 있습니다. Isaac Sim의 합성 데이터 생성 파이프라인에서 대규모 자산 라이브러리를 다룰 때 Payload가 활용됩니다.
+
+### VariantSet — 씬 변형 관리
+
+VariantSet은 **하나의 Prim에 대해 여러 가지 변형(Variant)을 미리 정의**하고 런타임에 전환할 수 있는 메커니즘입니다. 도메인 랜덤화에서 특히 강력하게 활용됩니다.
+
+```python
+# 개념 이해용 의사코드 — VariantSet 정의
+def Mesh "Box" (
+    variants = {
+        string material = "metal"  # 현재 선택된 변형
+    }
+    prepend variantSets = "material"
+)
+{
+    variantSet "material" = {
+        "metal" {
+            # 금속 머티리얼 속성
+            rel material:binding = </Materials/Metal>
+        }
+        "plastic" {
+            # 플라스틱 머티리얼 속성
+            rel material:binding = </Materials/Plastic>
+        }
+        "rubber" {
+            rel material:binding = </Materials/Rubber>
+        }
+    }
+}
+```
+
+로봇이 다양한 재질의 물체를 잡는 훈련을 할 때, 같은 형태의 물체를 금속·플라스틱·고무 등으로 변형하는 VariantSet을 정의해두면 프로그래밍 방식으로 변형을 전환하며 수천 가지 변형 씬을 생성할 수 있습니다.
+
+### Inherits — 클래스 기반 상속
+
+Inherits는 **특수 Prim인 `__class__` 를 정의하고 다른 Prim이 이를 상속**하는 메커니즘입니다. 공통 속성을 한 곳에서 관리하고 여러 Prim에 적용할 때 유용합니다.
+
+예를 들어 모든 로봇에 공통으로 적용할 디버그 시각화 설정이나 물리 기본값을 클래스 Prim에 정의하면, 개별 로봇 Prim들이 이를 상속하면서도 필요한 경우 로컬에서 오버라이드할 수 있습니다.
+
+## LIVRPS 강도 순서의 의미
+
+여러 Composition Arc가 동일한 Attribute에 값을 제공할 때 어떤 값이 최종적으로 적용될까요? USD는 **LIVRPS 순서**에 따라 강도(strength)를 결정합니다.
+
+```text
+LIVRPS 강도 순서 (강함 → 약함)
+
+┌─────────────────────────────────────────────────────┐
+│  강함  L: Locals (로컬 오피니언)                    │
+│        │                                            │
+│        ▼                                            │
+│        I: Inherits (클래스 상속)                    │
+│        │                                            │
+│        ▼                                            │
+│        V: VariantSets (변형자)                      │
+│        │                                            │
+│        ▼                                            │
+│        R: References (외부 참조)                    │
+│        │                                            │
+│        ▼                                            │
+│        P: Payloads (지연 참조)                      │
+│        │                                            │
+│        ▼                                            │
+│  약함  S: SubLayers (레이어 스택)                   │
+└─────────────────────────────────────────────────────┘
+```
+
+실용적인 의미: 로봇 모델을 파일에서 Reference로 가져오고, 그 위에 씬 파일에서 로컬 오버라이드(위치, 색상 등)를 추가하면 로컬 값(L)이 참조(R)보다 강하므로 오버라이드가 적용됩니다. 이것이 비파괴 편집의 핵심 원리입니다.
+
+## 비파괴 편집 워크플로
+
+비파괴(non-destructive) 편집이란 **원본 파일을 수정하지 않고 오버라이드 레이어를 추가하는 방식**으로 변경 사항을 관리하는 접근법입니다.
+
+```text
+비파괴 편집 레이어 구조 예시 (로봇 실험 씬)
+
+experiment_run_042.usda        ← 최상위 실험 레이어
+├── SubLayer: randomization.usda    ← 도메인 랜덤화 오버라이드
+│   (조명/머티리얼 변형)
+├── SubLayer: sensor_config.usda    ← 센서 파라미터
+│   (카메라 해상도/노이즈)
+└── SubLayer: base_scene.usda       ← 기본 씬 (수정 불가)
+    ├── Reference: robot.usda       ← 로봇 모델 (수정 불가)
+    └── Reference: warehouse.usda  ← 환경 자산 (수정 불가)
+```
+
+이 구조에서 실험 담당자는 `experiment_run_042.usda`와 `randomization.usda`만 관리합니다. 기본 씬이나 로봇 모델을 실수로 수정할 가능성이 없으며, 새 실험은 기존 파일을 복사해 최상위 레이어만 바꾸는 방식으로 빠르게 설정할 수 있습니다.
+
+## 합성 실전 예: 도메인 랜덤화
+
+도메인 랜덤화(domain randomization)는 훈련 데이터의 다양성을 높이기 위해 시뮬레이션 환경의 여러 파라미터를 무작위로 변화시키는 기법입니다. USD Composition은 이 워크플로를 자연스럽게 지원합니다.
+
+```text
+도메인 랜덤화 파이프라인
+
+기본 씬 (base_scene.usda)
+        │
+        ▼
+Replicator 랜덤화 엔진
+        │
+   ┌────┴─────┬────────────┬────────────┐
+   ▼          ▼            ▼            ▼
+조명 변형   머티리얼 변형  카메라 자세  물체 위치
+(강도/방향) (색상/반사율) (위치/FOV)  (위치/회전)
+   │          │            │            │
+   └────┬─────┴────────────┴────────────┘
+        ▼
+  합성 씬 인스턴스 N개 생성
+        │
+        ▼
+  렌더링 + 어노테이션 자동 생성
+        │
+        ▼
+  학습 데이터셋 (이미지 + 레이블)
+```
+
+Omniverse Replicator는 이 파이프라인을 Python API로 제어할 수 있게 해줍니다. VariantSet으로 미리 정의한 변형 목록에서 무작위로 선택하거나, Attribute 값의 분포를 정의해 샘플링하는 방식으로 수천 가지 변형 씬을 자동 생성합니다.
+
+USD Composition의 강력함은 이러한 복잡한 씬 변형 관리를 **선언적이고 파일 기반**으로 처리한다는 점입니다. 코드로 씬을 직접 조작하는 대신 레이어와 VariantSet 구조를 통해 변형 공간을 명확하게 정의할 수 있습니다.

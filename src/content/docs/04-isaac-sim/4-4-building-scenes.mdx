@@ -1,0 +1,248 @@
+---
+title: "씬과 환경 구성"
+description: Isaac Sim에서 Ground Plane, 조명, 물체, Physics Scene을 조합해 완전한 시뮬레이션 환경을 구성하고, 환경 자산을 활용한 씬 설정 방법을 습득한다.
+sidebar:
+  order: 4
+learning_objectives:
+  - "Ground Plane, Physics Scene, 조명을 포함한 기본 시뮬레이션 환경을 구성할 수 있다"
+  - "물리 머티리얼(Physics Material)을 설정해 마찰과 반발 계수를 조정할 수 있다"
+  - "Isaac Sim 내장 자산 라이브러리를 활용한 환경 구성 방법을 이해한다"
+prerequisites:
+  - "4-3-importing-robots"
+  - "3-3-scene-composition"
+estimated_minutes: 30
+references:
+  - title: "Isaac Sim 씬 구성 가이드"
+    url: "https://docs.isaacsim.omniverse.nvidia.com"
+    accessed: "2026-06-17"
+  - title: "NVIDIA Omniverse Asset Library"
+    url: "https://docs.omniverse.nvidia.com/extensions/latest/ext_nucleus-asset-browser.html"
+    accessed: "2026-06-17"
+---
+
+## 씬 구성의 목표
+
+Isaac Sim에서 씬을 구성한다는 것은 단순히 3D 모델을 배치하는 것이 아닙니다. 물리 시뮬레이션이 올바르게 작동하고, 렌더링이 현실적이며, 로봇이 의도한 대로 상호작용할 수 있는 **완전한 시뮬레이션 환경을 만드는 것**입니다.
+
+좋은 씬 구성의 기준:
+- **물리 정확도**: 중력, 마찰, 충돌이 현실과 유사하게 작동
+- **시각적 사실성**: 조명과 머티리얼이 실제 환경과 유사
+- **재현 가능성**: 씬 파일 저장으로 동일한 환경 재현 가능
+- **도메인 랜덤화 준비**: 변형 가능한 파라미터를 구조적으로 배치
+
+## 필수 씬 구성 요소
+
+### 1. Physics Scene
+
+모든 물리 시뮬레이션의 시작점입니다. 씬에 Physics Scene이 없으면 중력도, 충돌도 작동하지 않습니다.
+
+```text
+Physics Scene 기본 설정
+
+Create → Physics → Physics Scene
+
+/physicsScene Prim 생성됨
+├── gravity: (0.0, 0.0, -9.81)  ← 중력 벡터 (Z축 아래 방향)
+│   Isaac Sim은 기본적으로 Z-up 좌표계 사용(로봇공학 관례와 동일)
+├── timeStepsPerSecond: 60       ← 물리 업데이트 주기
+└── Solver 설정
+    ├── Solver Type: TGS (Temporal Gauss-Seidel — 권장)
+    └── Iteration Counts: 수렴 품질 vs 성능 트레이드오프
+```
+
+Isaac Sim의 기본 좌표계는 **Z-up**입니다(로봇공학·ROS 관례와 동일). Y-up을 쓰는 일부 DCC 도구(Maya, 일부 FBX 파일)와 달리 Isaac Sim은 Z-up을 사용하므로, 외부에서 가져온 모델의 방향을 확인해야 합니다.
+
+### 2. Ground Plane — 바닥면
+
+```text
+Ground Plane 추가
+
+Create → Physics → Ground Plane
+
+/groundPlane 생성 (무한히 넓은 평면)
+├── Mesh: 시각적 바닥 표현 (격자 텍스처)
+├── Physics Collider: 충돌 검출용 무한 평면
+└── 기본 위치: Y = 0 (좌표 원점 평면)
+```
+
+**Ground Plane vs Mesh 충돌체 비교**:
+- Ground Plane: 무한 평면, 간단한 씬에 적합
+- Mesh Collider: 실제 형상의 바닥 (경사, 장애물 포함 환경)
+
+실제 환경을 재현할 때는 실제 바닥 형상을 메시로 모델링하고 충돌 형상을 붙이는 방식이 필요합니다. Ground Plane은 빠른 프로토타이핑에 적합합니다.
+
+### 3. 조명 설정
+
+물리적으로 정확한 빛이 없으면 RTX 렌더링이 의미없고, 합성 데이터의 품질도 낮아집니다. Isaac Sim에서 주로 사용하는 조명 타입은 다음과 같습니다.
+
+```text
+주요 조명 타입 비교
+
+┌───────────────────┬────────────────────────────────────────┐
+│  조명 타입        │  특성 및 용도                          │
+├───────────────────┼────────────────────────────────────────┤
+│  DistantLight     │  태양처럼 무한 거리에서 오는 평행광    │
+│  (원거리 조명)    │  실외 환경, 전체 씬 균등 조명          │
+│                   │  방향으로 그림자 방향 결정              │
+├───────────────────┼────────────────────────────────────────┤
+│  SphereLight      │  구 형태 점광원                        │
+│  (구 조명)        │  실내 조명, 전구 효과                  │
+│                   │  반경으로 크기·소프트 섀도우 조정      │
+├───────────────────┼────────────────────────────────────────┤
+│  DomeLight        │  씬 전체를 감싸는 구형 환경 조명       │
+│  (돔 조명)        │  HDR 이미지를 텍스처로 사용 가능       │
+│                   │  사실적인 환경 반사와 간접 조명        │
+├───────────────────┼────────────────────────────────────────┤
+│  RectLight        │  직사각형 면 광원                      │
+│  (면 조명)        │  형광등, LED 패널 시뮬레이션           │
+└───────────────────┴────────────────────────────────────────┘
+```
+
+**도메인 랜덤화를 위한 조명 설계**:
+합성 데이터 생성 시 조명 강도·색온도·위치를 랜덤화하면 모델이 다양한 조명 조건에서 강건해집니다. DomeLight에 다양한 HDR 이미지를 Variant로 정의해두면 클릭 한 번으로 환경 조명 전체를 바꿀 수 있습니다.
+
+### 4. 물리 머티리얼 (Physics Material)
+
+시각적 머티리얼(MDL)과 별개로, **물리 머티리얼**은 표면의 마찰 계수와 반발 계수를 정의합니다. 로봇이 물체를 잡거나 이동할 때 물리 머티리얼이 시뮬레이션 현실성에 직접 영향을 줍니다.
+
+```text
+Physics Material 생성 및 적용
+
+Create → Physics → Physics Material (Rigid Body)
+
+생성된 Physics Material 속성:
+├── staticFriction: 0.5   ← 정적 마찰 계수 (움직이기 시작할 때)
+├── dynamicFriction: 0.5  ← 동적 마찰 계수 (움직이는 중)
+└── restitution: 0.0      ← 반발 계수 (0=완전 비탄성, 1=완전 탄성)
+
+물체 Prim에 적용:
+Stage 트리에서 물체 선택
+→ Property 패널 → Physics → Physics Material
+→ 생성한 Physics Material 연결
+```
+
+마찰 계수가 중요한 이유: 그리퍼로 물체를 집을 때 물체와 그리퍼 표면의 마찰이 너무 낮으면 물체가 미끄러져 조작에 실패합니다. 실제 재질에 맞는 마찰 계수를 설정해야 합니다.
+
+| 재질 조합 | 정적 마찰 계수 가이드 |
+|---------|-------------------|
+| 고무-고무 | ~0.8 이상 |
+| 플라스틱-나무 | ~0.4~0.6 |
+| 금속-금속 | ~0.15~0.4 |
+| 금속-얼음 | ~0.01~0.1 |
+
+## 씬 구성 실전 예시
+
+### 테이블탑 조작 환경 구성
+
+로봇 팔이 테이블 위 물체를 집는 환경을 구성하는 단계별 예시입니다.
+
+```text
+테이블탑 Pick & Place 씬 구성
+
+/World (Xform — 씬 루트)
+├── /World/physicsScene (Physics Scene)
+│   └── gravity: (0, 0, -9.81)
+│
+├── /World/Lighting (Scope — 조명 그룹)
+│   ├── /World/Lighting/KeyLight
+│   │   (DistantLight, intensity:2000, angle:45°)
+│   ├── /World/Lighting/FillLight
+│   │   (SphereLight, intensity:500, radius:0.3)
+│   └── /World/Lighting/EnvDome
+│       (DomeLight, HDR텍스처, intensity:500)
+│
+├── /World/Environment (Scope — 환경 그룹)
+│   ├── /World/Environment/Room (Mesh — 방 구조)
+│   │   └── CollisionAPI + PhysicsMaterialAPI
+│   └── /World/Environment/Table (Mesh — 테이블)
+│       └── CollisionAPI + PhysicsMaterialAPI
+│
+├── /World/Robot (Reference → franka_panda.usd)
+│   └── xformOp:translate: (0, 0, 0.76)  ← 테이블 높이(Z)
+│
+└── /World/Objects (Scope — 조작 대상 물체)
+    ├── /World/Objects/Cube_001
+    │   (Mesh + RigidBodyAPI + CollisionAPI)
+    ├── /World/Objects/Cylinder_001
+    │   (Mesh + RigidBodyAPI + CollisionAPI)
+    └── /World/Objects/Sphere_001
+        (Mesh + RigidBodyAPI + CollisionAPI)
+```
+
+### Ground Plane 대신 실제 바닥 사용
+
+실제 공장이나 실험실 바닥을 재현할 때는 Ground Plane보다 메시 충돌체를 사용합니다.
+
+```python
+# 개념 이해용 의사코드 — 메시 충돌체 설정 예시
+# 실제 API는 Isaac Sim 버전에 따라 다를 수 있음
+
+# 바닥 메시 Prim에 충돌 설정 추가
+from pxr import UsdPhysics, PhysxSchema
+
+floor_prim = stage.GetPrimAtPath("/World/Environment/Floor")
+
+# 충돌 API 적용
+collision_api = UsdPhysics.MeshCollisionAPI.Apply(floor_prim)
+collision_api.GetApproximationAttr().Set("none")  # 원본 메시 사용
+
+# 물리 머티리얼 연결
+physics_material = UsdPhysics.MaterialAPI.Apply(floor_prim)
+physics_material.GetStaticFrictionAttr().Set(0.5)
+```
+
+## 환경 자산 라이브러리 활용
+
+NVIDIA는 Omniverse Nucleus를 통해 다양한 환경 자산(Warehouse, Factory, Hospital 등)과 소품 자산을 제공합니다. 이를 활용하면 사실적인 시뮬레이션 환경을 빠르게 구성할 수 있습니다.
+
+```text
+Isaac Sim 내장 자산 접근 경로 (버전에 따라 경로 다를 수 있음)
+
+Omniverse 탭 또는 Content 브라우저에서:
+• /Isaac/Environments/    : 전체 환경 (창고, 공장, 병원 등)
+• /Isaac/Robots/          : 로봇 모델 USD 파일
+• /Isaac/Props/           : 소품 (박스, 팔레트, 선반 등)
+• /Isaac/Sensors/         : 센서 모델 (카메라, 라이다)
+• /NVIDIA/Materials/      : MDL 머티리얼 라이브러리
+
+사용 방법:
+브라우저에서 자산 선택 → Viewport에 드래그 앤 드롭
+또는 Stage 트리 우클릭 → Add Reference → 경로 입력
+```
+
+## 씬 파일 저장과 관리
+
+씬 구성이 완료되면 반드시 USD 파일로 저장합니다.
+
+```bash
+# 저장 단축키
+Ctrl + S  : 현재 파일에 저장 (덮어쓰기)
+Ctrl + Shift + S : 다른 이름으로 저장
+
+# 저장 시 권장 사항:
+# 1. Nucleus 경로에 저장 (팀 공유 시)
+#    omniverse://localhost/Projects/robot_project/scenes/scene_001.usd
+# 2. 로컬 경로에 저장 (개인 작업)
+#    /home/user/isaac_project/scenes/scene_001.usd
+```
+
+씬이 외부 USD 파일(로봇, 환경 자산)을 Reference로 사용하는 경우, 씬 파일을 다른 컴퓨터로 옮길 때 참조된 파일도 함께 이동해야 합니다. Nucleus를 사용하면 경로가 `omniverse://` URL로 고정되어 팀 내에서 공유할 때 경로 문제가 발생하지 않습니다.
+
+## 씬 최적화 팁
+
+복잡한 씬에서 시뮬레이션 성능을 유지하기 위한 실용적인 팁들입니다.
+
+```text
+씬 최적화 체크리스트
+
+□ 불필요한 고해상도 메시는 LOD(Level of Detail) 또는 단순화
+□ 충돌 형상은 가능한 단순하게 (ConvexHull 우선 사용)
+□ Self Collision은 꼭 필요한 경우에만 활성화
+□ 물리 시뮬레이션에 참여하지 않는 배경 요소는
+  RigidBodyAPI 없이 시각적 메시만 유지
+□ 합성 데이터 생성 시 필요 없는 자산은 Payload로 지연 로딩
+□ Physics Scene의 시뮬레이션 스텝은 필요한 정밀도에 맞게 조정
+  (높을수록 정확하지만 느림)
+```
+
+다음 챕터에서는 이렇게 구성된 씬을 Python 스크립트로 프로그래밍 방식으로 제어하는 방법을 다룹니다. UI 조작을 자동화하고, 강화학습 루프와 연동하며, 대규모 실험을 스크립트로 관리하는 것이 핵심 주제입니다.

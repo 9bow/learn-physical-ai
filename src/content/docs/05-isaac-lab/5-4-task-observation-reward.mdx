@@ -1,0 +1,258 @@
+---
+title: "Task·Observation·Reward 정의"
+description: Isaac Lab에서 관측 공간, 행동 공간, 보상 함수, 종료 조건을 구체적으로 정의하는 방법을 배웁니다.
+sidebar:
+  order: 4
+learning_objectives:
+  - "Isaac Lab에서 관측 공간과 행동 공간을 정의하는 방식을 설명할 수 있다"
+  - "RewardTerm 구조와 보상 가중치 설정 방법을 이해한다"
+  - "에피소드 종료 조건(terminated, timed_out)을 구분하고 설정할 수 있다"
+prerequisites:
+  - "5-3-environment-design"
+estimated_minutes: 35
+references:
+  - title: "Isaac Lab - Task Design Tutorial"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/tutorials/03_envs/index.html"
+    accessed: "2026-06-17"
+  - title: "Isaac Lab API - mdp module"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.envs.mdp.html"
+    accessed: "2026-06-17"
+  - title: "Isaac Lab - Reward Terms Reference"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/api/lab/isaaclab.envs.mdp.rewards.html"
+    accessed: "2026-06-17"
+---
+
+## 환경 구성 요소 개요
+
+Isaac Lab 환경의 핵심은 세 가지 구성 요소의 정교한 정의에 달려 있습니다.
+
+1. **관측(Observation)**: 정책이 매 스텝마다 입력으로 받는 정보
+2. **행동(Action)**: 정책이 출력하는 제어 명령
+3. **보상(Reward)**: 정책이 원하는 행동을 할 때 주어지는 신호
+
+이 세 요소의 품질이 RL 학습의 성패를 결정합니다. 보상이 잘못 설계되면 정책은 의도치 않은 방식으로 보상을 극대화(reward hacking)합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              에피소드 내 데이터 흐름                          │
+│                                                              │
+│  t=0                                                         │
+│  ┌─────────┐    obs_t    ┌─────────┐    action_t             │
+│  │  환경   │──────────▶ │  정책   │──────────────┐          │
+│  │ (Isaac  │            │ (NN)    │              │          │
+│  │  Lab)   │◀─────────  └─────────┘              │          │
+│  └────┬────┘  reward_t                            │          │
+│       │       done_t                              │          │
+│       │                              ┌────────────▼──────┐  │
+│       └──────────────────────────────│   step(action_t)  │  │
+│                                      └───────────────────┘  │
+│  t=1, 2, 3, ... (에피소드 종료까지 반복)                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## 관측 공간 정의
+
+### Manager-based 방식
+
+Manager-based 환경에서는 `ObservationsCfg` 클래스 안에 관측 그룹과 항목을 정의합니다.
+
+```python
+# 개념 이해용 의사코드 — 실제 API는 공식 문서 확인
+from isaaclab.managers import ObservationGroupCfg, ObservationTermCfg
+import isaaclab.envs.mdp as mdp
+
+class ObservationsCfg:
+    """관측 그룹 설정"""
+
+    class PolicyObs(ObservationGroupCfg):
+        """정책(네트워크)에 전달되는 관측 그룹"""
+
+        # 관절 위치 (정규화 포함)
+        joint_pos = ObservationTermCfg(
+            func=mdp.joint_pos_rel,
+            noise=mdp.GaussianNoiseCfg(std=0.01)  # 노이즈 추가
+        )
+        # 관절 속도
+        joint_vel = ObservationTermCfg(
+            func=mdp.joint_vel_rel,
+            noise=mdp.GaussianNoiseCfg(std=0.05)
+        )
+        # 베이스 선속도
+        base_lin_vel = ObservationTermCfg(func=mdp.base_lin_vel)
+        # 베이스 각속도
+        base_ang_vel = ObservationTermCfg(func=mdp.base_ang_vel)
+        # 중력 방향 (기울기 감지)
+        projected_gravity = ObservationTermCfg(func=mdp.projected_gravity)
+        # 목표 속도 명령
+        velocity_commands = ObservationTermCfg(func=mdp.generated_commands)
+```
+
+`mdp` 모듈은 Isaac Lab이 제공하는 공통 관측·보상·행동 함수 라이브러리입니다. 직접 구현하기 전에 이미 구현된 항목이 있는지 확인하십시오.
+
+관측 그룹은 여러 개 정의할 수 있습니다. 예를 들어 `PolicyObs` 외에 `CriticObs`를 따로 정의하여 비대칭 Actor-Critic 구조를 구성할 수 있습니다.
+
+### 관측 설계 원칙
+
+좋은 관측 설계는 다음 원칙을 따릅니다.
+
+**충분성**: 정책이 최적 행동을 결정하는 데 필요한 모든 정보를 포함해야 합니다. 과소 관측(underobservation)은 정책의 학습 상한을 제한합니다.
+
+**불필요 제거**: 과잉 관측은 학습을 느리게 하고 일반화를 방해합니다. 절대 위치보다는 상대 위치나 속도가 일반적으로 더 유용합니다.
+
+**노이즈 추가**: 실제 센서는 노이즈가 있으므로, 시뮬레이션 관측에 가우시안 노이즈를 추가하면 sim-to-real 이전에 도움이 됩니다.
+
+## 행동 공간 정의
+
+Isaac Lab은 다양한 행동 표현을 지원합니다.
+
+| 행동 유형 | 설명 | 주요 용도 |
+|---|---|---|
+| `JointPositionAction` | 관절 위치 목표값 | 팔 제어, 손 제어 |
+| `JointVelocityAction` | 관절 속도 목표값 | 특정 서보 드라이버 |
+| `JointEffortAction` | 관절 토크 직접 제어 | 전신 제어, 연구 |
+| `NonHolonomicAction` | 차동 구동 제어 | 모바일 로봇 |
+
+```python
+# 개념 이해용 의사코드 — 실제 API는 공식 문서 확인
+from isaaclab.managers import ActionTermCfg
+
+class ActionsCfg:
+    """행동 공간 설정"""
+    joint_pos = ActionTermCfg(
+        class_type=mdp.JointPositionAction,
+        asset_name="robot",
+        # 행동 스케일: 네트워크 출력에 곱해지는 값
+        scale=0.5,
+    )
+```
+
+행동 공간의 스케일링은 중요합니다. 네트워크 출력은 일반적으로 tanh 등의 활성화 함수로 [-1, 1] 범위로 제한되므로, `scale` 파라미터로 실제 관절 이동 범위에 맞게 조정해야 합니다.
+
+## 보상 함수 정의
+
+### 보상 항(Reward Term) 구조
+
+Manager-based 환경에서 보상은 여러 개의 독립적인 항(term)으로 분리하여 정의합니다. 각 항은 하나의 행동 측면을 평가하며, 가중치를 통해 중요도를 조절합니다.
+
+```python
+# 개념 이해용 의사코드 — 실제 API는 공식 문서 확인
+from isaaclab.managers import RewardTermCfg
+
+class RewardsCfg:
+    """보상 설정"""
+
+    # 목표 선속도 추적 (핵심 보상 - 높은 가중치)
+    track_lin_vel_xy = RewardTermCfg(
+        func=mdp.track_lin_vel_xy_exp,
+        weight=+1.0,
+        params={"std": 0.25}
+    )
+    # 목표 각속도 추적
+    track_ang_vel_z = RewardTermCfg(
+        func=mdp.track_ang_vel_z_exp,
+        weight=+0.5,
+        params={"std": 0.25}
+    )
+    # 에너지 효율 패널티
+    action_rate = RewardTermCfg(
+        func=mdp.action_rate_l2,
+        weight=-0.01
+    )
+    # 관절 토크 패널티
+    joint_torques = RewardTermCfg(
+        func=mdp.joint_torques_l2,
+        weight=-1.0e-5
+    )
+    # 보행 대칭성 보상
+    feet_air_time = RewardTermCfg(
+        func=mdp.feet_air_time,
+        weight=+0.125,
+        params={"sensor_cfg": SceneEntityCfg("contact_sensor")}
+    )
+```
+
+### 보상 설계 패턴
+
+보상 설계에서 자주 사용되는 패턴들이 있습니다.
+
+**지수 형태 보상 (Exponential reward)**: 목표값과의 차이에 지수 함수를 적용합니다. 목표에 가까울수록 보상이 급격히 높아지며 부드러운 그라디언트를 제공합니다.
+
+```python
+# 개념 이해용 의사코드
+def track_lin_vel_xy_exp(env, std: float) -> torch.Tensor:
+    # 목표 속도와 실제 속도의 차이
+    error = torch.sum(
+        (env.command_manager.get_command("vel_cmd")[:, :2]
+         - env.robot.data.root_lin_vel_b[:, :2]) ** 2,
+        dim=1
+    )
+    return torch.exp(-error / std**2)
+```
+
+**패널티 항**: 음의 가중치로 원치 않는 행동(과도한 토크, 빠른 행동 변화, 넘어짐)을 억제합니다.
+
+**생존 보상**: 에피소드가 지속될수록 보상을 주어 넘어지지 않도록 유도합니다.
+
+## 종료 조건 정의
+
+에피소드 종료는 두 종류로 구분합니다.
+
+- **terminated**: 실패로 인한 강제 종료 (예: 넘어짐, 경계 이탈)
+- **timed_out**: 최대 에피소드 길이 도달 (정상 종료)
+
+```python
+# 개념 이해용 의사코드 — 실제 API는 공식 문서 확인
+class TerminationsCfg:
+    """종료 조건 설정"""
+
+    # 시간 초과 (정상 종료)
+    time_out = TerminationTermCfg(
+        func=mdp.time_out,
+        time_out=True  # 이 플래그가 terminated/timed_out을 구분
+    )
+    # 베이스 높이 너무 낮음 (넘어짐 감지)
+    base_height = TerminationTermCfg(
+        func=mdp.root_height_below_minimum,
+        params={"minimum_height": 0.3}
+    )
+    # 접촉 감지 (몸통이 지면 닿으면 종료)
+    illegal_contact = TerminationTermCfg(
+        func=mdp.illegal_contact,
+        params={"threshold": 1.0, "sensor_cfg": ...}
+    )
+```
+
+`time_out=True`로 표시된 종료는 가치 함수(value function) 부트스트래핑에서 특별히 처리됩니다. 실패 종료와 달리, 시간 초과는 `done` 마스크를 다르게 적용하여 학습 안정성을 높입니다.
+
+## 환경 설정 클래스 전체 구조
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│           ManagerBasedRLEnvCfg 전체 구조 요약                 │
+│                                                              │
+│  MyEnvCfg                                                    │
+│  ├── sim: SimulationCfg          # 물리 시뮬레이션 설정       │
+│  │    ├── dt: 0.005              # 물리 타임스텝(초)          │
+│  │    └── physx: PhysxCfg        # PhysX 파라미터            │
+│  │                                                           │
+│  ├── scene: SceneCfg             # 씬 구성                   │
+│  │    ├── robot: ArticulationCfg # 로봇 자산                 │
+│  │    ├── terrain: TerrainCfg    # 지형                      │
+│  │    └── sensors: ...          # 센서 구성                  │
+│  │                                                           │
+│  ├── observations: ObservationsCfg                           │
+│  ├── actions: ActionsCfg                                     │
+│  ├── rewards: RewardsCfg                                     │
+│  ├── terminations: TerminationsCfg                           │
+│  ├── curriculum: CurriculumCfg (선택)                        │
+│  │                                                           │
+│  ├── decimation: 4              # 물리 스텝 / 정책 스텝       │
+│  └── episode_length_s: 20.0    # 에피소드 최대 길이(초)      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+`decimation`은 중요한 파라미터입니다. 물리 시뮬레이션이 500 Hz(dt=0.002s)로 실행되고 decimation=4이면, 정책은 125 Hz로 실행됩니다. 보행 로봇은 50~100 Hz, 조심스러운 매니퓰레이션은 30~50 Hz가 일반적입니다.
+
+## 소결
+
+Isaac Lab에서 좋은 환경은 충분하고 노이즈 저항성 있는 관측, 적절한 행동 표현, 그리고 행동의 여러 측면을 독립적인 항으로 분리한 보상 설계로 구성됩니다. 종료 조건은 실패 종료와 시간 초과를 명확히 구분해야 학습 안정성을 확보할 수 있습니다. 다음 챕터에서는 이 환경 인스턴스들이 어떻게 GPU에서 수천 개 단위로 병렬 실행되는지 살펴봅니다.

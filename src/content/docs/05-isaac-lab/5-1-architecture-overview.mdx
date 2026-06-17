@@ -1,0 +1,153 @@
+---
+title: "Isaac Lab 아키텍처 개관"
+description: NVIDIA Isaac Lab의 전체 구조를 이해하고, 핵심 구성요소와 Isaac Gym과의 관계를 파악합니다.
+sidebar:
+  order: 1
+learning_objectives:
+  - "Isaac Lab이 Isaac Sim 위에서 어떻게 동작하는지 설명할 수 있다"
+  - "Isaac Lab의 핵심 구성요소(환경, 매니저, 자산, 센서)의 역할을 구분할 수 있다"
+  - "Isaac Gym(레거시)와 Isaac Lab의 관계와 차이를 이해한다"
+prerequisites:
+  - "04-isaac-sim"
+estimated_minutes: 30
+references:
+  - title: "Isaac Lab Documentation - Overview"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/overview/index.html"
+    accessed: "2026-06-17"
+  - title: "Isaac Lab GitHub Repository"
+    url: "https://github.com/isaac-sim/IsaacLab"
+    accessed: "2026-06-17"
+  - title: "Isaac Lab - Design Philosophy"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/overview/core_concepts.html"
+    accessed: "2026-06-17"
+---
+
+## Isaac Lab이란 무엇인가
+
+**Isaac Lab**은 NVIDIA가 개발한 오픈소스 로봇 학습(robot learning) 프레임워크입니다. Isaac Sim을 시뮬레이션 백엔드로 사용하며, 그 위에 강화학습(Reinforcement Learning, RL)과 모방학습(Imitation Learning, IL)에 필요한 고수준 API와 도구를 제공합니다.
+
+Isaac Lab은 이전 세대 프레임워크인 **Isaac Gym**과 **OmniIsaacGymEnvs(OIGE)**의 기능을 통합하고 확장한 후속 프로젝트입니다. 기존 두 프레임워크가 각자 별도로 유지되면서 발생하던 중복과 비효율을 해소하고, Isaac Sim의 PhysX 5 기반 GPU 물리 시뮬레이션을 완전히 활용할 수 있도록 설계되었습니다.
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                     Isaac Lab 레이어 구조                        │
+├─────────────────────────────────────────────────────────────────┤
+│   RL 프레임워크 (RSL-RL / rl_games / SKRL / SB3)                │
+│   ──────────────────────────────────────────────                │
+│   Isaac Lab API                                                  │
+│   ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐         │
+│   │  환경    │ │ 매니저   │ │  자산    │ │  센서    │         │
+│   │(Envs)   │ │(Managers)│ │(Assets)  │ │(Sensors) │         │
+│   └──────────┘ └──────────┘ └──────────┘ └──────────┘         │
+│   ──────────────────────────────────────────────                │
+│   NVIDIA Isaac Sim (Omniverse / USD / PhysX 5)                  │
+│   ──────────────────────────────────────────────                │
+│   CUDA / GPU 하드웨어                                           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Isaac Gym과의 관계
+
+Isaac Lab을 이해하려면 먼저 그 전신을 살펴볼 필요가 있습니다.
+
+**Isaac Gym (레거시)**는 NVIDIA가 2021년 공개한 GPU 기반 로봇 RL 환경입니다. 독립적인 시뮬레이터를 내장하고 있었으며, PyTorch 텐서 인터페이스를 통해 수천 개의 환경을 동시에 실행하는 획기적인 성능을 보여주었습니다. 그러나 Isaac Gym은 내부 물리 엔진을 사용했으며 USD(Universal Scene Description) 기반 워크플로와는 별개로 동작했습니다.
+
+**OmniIsaacGymEnvs(OIGE)**는 Isaac Sim(Omniverse 기반)과 Isaac Gym 스타일의 RL 환경을 연결하려는 시도였습니다. USD 자산과 Omniverse의 렌더링 파이프라인을 활용할 수 있었지만, 두 시스템 간의 인터페이스가 복잡했습니다.
+
+**Isaac Lab**은 이 두 흐름을 하나로 통합합니다.
+
+```text
+┌────────────────────────────────────────────────────────────┐
+│                 Isaac RL 프레임워크 계보                    │
+│                                                             │
+│  Isaac Gym (2021)          OmniIsaacGymEnvs (2022~)        │
+│  ┌─────────────┐           ┌─────────────────┐             │
+│  │ 독립 시뮬   │           │ Isaac Sim 기반  │             │
+│  │ GPU 병렬화  │           │ USD 자산 지원   │             │
+│  │ PyTorch IF  │           │ 복잡한 인터페이스│             │
+│  └──────┬──────┘           └────────┬────────┘             │
+│         │                           │                       │
+│         └────────────┬──────────────┘                       │
+│                      ▼                                       │
+│              Isaac Lab (2023~)                               │
+│         ┌─────────────────────┐                             │
+│         │ Isaac Sim 완전 통합 │                             │
+│         │ GPU 병렬화 + USD    │                             │
+│         │ 모듈식 매니저 API   │                             │
+│         │ 다중 RL 프레임워크  │                             │
+│         └─────────────────────┘                             │
+└────────────────────────────────────────────────────────────┘
+```
+
+## 핵심 구성요소
+
+Isaac Lab의 아키텍처는 네 가지 핵심 레이어로 구성됩니다.
+
+### 1. 환경(Environment)
+
+환경은 Isaac Lab에서 학습이 이루어지는 기본 단위입니다. 하나의 환경 클래스 안에 시뮬레이션 설정, 관측 공간, 행동 공간, 보상 함수, 종료 조건이 통합됩니다. Isaac Lab은 크게 두 가지 환경 설계 방식을 제공합니다.
+
+- **Manager-based 환경**: 관측, 행동, 보상, 종료를 각각 별도의 매니저 객체로 분리하는 모듈식 접근법
+- **Direct 환경**: 단일 클래스 안에 모든 로직을 직접 구현하는 방식
+
+환경은 `num_envs` 파라미터로 동시에 실행할 인스턴스 수를 지정하며, 모든 인스턴스는 GPU 위에서 병렬로 실행됩니다.
+
+### 2. 매니저(Manager)
+
+Manager-based 환경에서 사용되는 모듈식 구성 요소입니다. 각 매니저는 특정 역할을 담당합니다.
+
+| 매니저 유형 | 역할 |
+|---|---|
+| `ObservationManager` | 관측 항목 수집 및 정규화 |
+| `ActionManager` | 행동 공간 정의 및 전처리 |
+| `RewardManager` | 다수의 보상 항(term) 조합 |
+| `TerminationManager` | 에피소드 종료 조건 관리 |
+| `CurriculumManager` | 난이도 점진적 조정 |
+| `RecorderManager` | 데이터 기록 및 시각화 |
+
+### 3. 자산(Asset)
+
+자산은 시뮬레이션 안의 물리적 객체를 나타냅니다. Isaac Lab은 다음 자산 유형을 지원합니다.
+
+- **Articulation**: 관절이 있는 로봇(팔, 보행 로봇 등)
+- **RigidObject**: 단일 강체 물체
+- **DeformableObject**: 변형 가능한 물체(실험적)
+
+자산은 USD 파일 또는 URDF를 통해 불러올 수 있으며, PhysX 5의 Tensor API를 통해 GPU에서 배치 연산으로 상태를 읽고 씁니다.
+
+### 4. 센서(Sensor)
+
+센서는 환경에서 데이터를 수집합니다. Isaac Lab이 지원하는 센서 유형은 다음과 같습니다.
+
+- **Camera**: RGB, 깊이(depth), 분할(segmentation) 이미지
+- **RayCaster**: LiDAR 스타일 레이캐스팅 (지형 높이 측정에 활용)
+- **ContactSensor**: 접촉 감지 및 힘 측정
+- **FrameTransformer**: 좌표 변환 정보
+
+## GPU 병렬화의 핵심 원리
+
+Isaac Lab의 핵심 강점은 수천 개의 환경 인스턴스를 하나의 GPU에서 동시에 실행할 수 있다는 점입니다. 이는 모든 환경 상태와 센서 데이터가 CPU 메모리가 아닌 **GPU 텐서(tensor)**로 표현되기 때문입니다.
+
+예를 들어, 4,096개의 환경이 동시에 실행될 때:
+
+- 관측 배치: `(4096, obs_dim)` 형태의 GPU 텐서
+- 행동 배치: `(4096, action_dim)` 형태의 GPU 텐서
+- 보상 배치: `(4096,)` 형태의 GPU 텐서
+
+물리 시뮬레이션도 PhysX 5의 GPU 디스패처를 통해 병렬로 실행되며, 학습 알고리즘 역시 동일한 GPU에서 실행됩니다. CPU-GPU 데이터 복사(memcpy)가 최소화되어 높은 샘플 처리량을 달성합니다.
+
+## Isaac Lab의 설계 철학
+
+Isaac Lab의 설계는 몇 가지 원칙을 따릅니다.
+
+**모듈성**: 관측·보상·종료 조건을 각각 독립적으로 구성할 수 있어, 공통 요소를 재사용하기 쉽습니다.
+
+**확장성**: 새로운 로봇이나 태스크를 추가할 때 기존 코드를 최소한으로 수정합니다.
+
+**통합성**: Isaac Sim의 렌더링, 물리, USD 에코시스템과 완전히 통합되어 있어, Omniverse 기반 도구(Isaac Sim GUI, Replicator 등)를 함께 활용할 수 있습니다.
+
+**프레임워크 독립성**: 특정 RL 라이브러리에 종속되지 않고 RSL-RL, rl\_games, SKRL, Stable-Baselines3 등을 플러그인 방식으로 연결할 수 있습니다.
+
+## 소결
+
+Isaac Lab은 Isaac Gym의 GPU 병렬화 성능과 Isaac Sim의 사실적인 물리·렌더링 환경을 결합한 차세대 로봇 학습 프레임워크입니다. 환경, 매니저, 자산, 센서라는 네 가지 추상화 계층 덕분에 복잡한 로봇 태스크도 체계적으로 구성할 수 있습니다. 다음 챕터에서는 Isaac Lab을 실제로 설치하고 첫 번째 학습을 실행하는 방법을 살펴봅니다.

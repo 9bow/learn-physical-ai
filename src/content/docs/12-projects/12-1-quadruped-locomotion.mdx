@@ -1,0 +1,304 @@
+---
+title: "프로젝트: 4족 보행 학습부터 배포까지"
+description: Isaac Lab에서 4족 보행 정책을 강화학습으로 학습하고, 평가 및 export를 거쳐 ROS 2 기반 실배포 파이프라인을 구성하는 전체 흐름을 실습합니다.
+sidebar:
+  order: 1
+learning_objectives:
+  - "Isaac Lab에서 4족 보행 환경을 설정하고 RL 학습을 실행할 수 있다"
+  - "학습된 정책을 평가하고 배포 가능한 형태로 export할 수 있다"
+  - "보행 정책을 ROS 2와 연동하는 개념적 파이프라인을 설명할 수 있다"
+prerequisites:
+  - "05-isaac-lab"
+  - "06-rl-control"
+  - "07-sim-to-real"
+  - "11-ros2-isaac-ros"
+estimated_minutes: 40
+references:
+  - title: "Isaac Lab Locomotion Workflows"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/tutorials/index.html"
+    accessed: "2026-06-17"
+  - title: "Isaac Lab GitHub - Locomotion Tasks"
+    url: "https://github.com/isaac-sim/IsaacLab/tree/main/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/locomotion"
+    accessed: "2026-06-17"
+  - title: "Isaac Lab RSL-RL Integration"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/frameworks/rsl_rl.html"
+    accessed: "2026-06-17"
+---
+
+## 프로젝트 개요
+
+이 프로젝트에서는 4족 보행 로봇(Quadruped)이 복잡한 지형에서 걷는 정책을 Isaac Lab에서 강화학습으로 학습하고, 학습된 정책을 평가·export하여 ROS 2 기반 실제 시스템에 배포하는 전체 파이프라인을 구성합니다.
+
+4족 보행은 Physical AI의 대표적인 성공 사례입니다. 전통적인 제어 이론(ZMP, CPG)으로는 불규칙한 지형에서의 강인한 보행을 달성하기 어려웠으나, RL 기반 접근은 수백만 번의 시뮬레이션으로 훨씬 강인한 정책을 학습합니다.
+
+```text
+전체 파이프라인:
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                     4족 보행 학습~배포 파이프라인                     │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  [1] 환경 설정          [2] RL 학습             [3] 평가             │
+│  Isaac Lab 환경 구성  →  PPO/RSL-RL 학습    →  시나리오별 평가      │
+│  도메인 랜덤화 적용      GPU 병렬 (4096+ env)   성공률/에너지 효율   │
+│       │                      │                      │               │
+│       └──────────────────────┴──────────────────────┘               │
+│                              │                                       │
+│                              ▼                                       │
+│  [4] 정책 Export        [5] 모델 최적화      [6] ROS 2 배포         │
+│  ONNX / JIT export   →  TensorRT 변환    →  Isaac ROS 통합          │
+│  관측/행동 스케일 저장    INT8 양자화         /joint_commands 토픽   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## 준비물
+
+- NVIDIA GPU (Isaac Lab 실행용, RTX 3070 이상 권장)
+- Isaac Sim 설치 및 Isaac Lab 설정 완료
+- Python 환경: PyTorch, Isaac Lab 종속성
+- ROS 2 Humble 또는 이후 버전 (배포 단계)
+
+Isaac Lab 설치는 공식 문서의 "Installation" 가이드를 따릅니다.
+
+```bash
+# Isaac Lab 클론 및 설치 확인
+git clone https://github.com/isaac-sim/IsaacLab.git
+cd IsaacLab
+
+# 설치 스크립트 실행 (실제 설치 방법은 공식 문서 확인)
+./isaaclab.sh --install
+
+# 기본 동작 확인
+./isaaclab.sh -p source/standalone/tutorials/00_sim/create_empty.py
+```
+
+## 단계 1: 환경 구성 및 도메인 랜덤화 설정
+
+Isaac Lab에는 ANYmal, Spot, Unitree Go 스타일의 4족 보행 환경이 기본 포함되어 있습니다. 실제 로봇 URDF/USD가 없어도 유사 형태의 환경으로 보행 정책 학습을 시작할 수 있습니다.
+
+```python
+# Isaac Lab 보행 환경 설정 예시 (개념 이해용 의사코드 — 실제 API는 공식 문서 확인)
+from omni.isaac.lab.envs import ManagerBasedRLEnvCfg
+from omni.isaac.lab.scene import InteractiveSceneCfg
+from omni.isaac.lab.terrains import TerrainImporterCfg
+
+@configclass
+class QuadrupedEnvCfg(ManagerBasedRLEnvCfg):
+    # 시뮬레이션 기본 설정
+    sim: SimulationCfg = SimulationCfg(dt=0.005, render_interval=4)
+
+    # 씬 구성: 지형, 로봇, 조명
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=4096,      # 병렬 환경 수
+        env_spacing=2.5,
+    )
+
+    # 관측 공간: 관절 상태, IMU, 발 접촉, 명령
+    observations: ObservationsCfg = ObservationsCfg()
+
+    # 보상 함수 구성
+    rewards: RewardsCfg = RewardsCfg()
+
+    # 종료 조건
+    terminations: TerminationsCfg = TerminationsCfg()
+
+    # 도메인 랜덤화
+    domain_rand: EventCfg = EventCfg()
+```
+
+도메인 랜덤화 설정은 Sim-to-Real 이전의 핵심입니다. 다음 요소들을 랜덤화합니다.
+
+```text
+랜덤화 항목                  범위 (예시, 실제 값은 로봇별 튜닝 필요)
+──────────────────────────────────────────────────────
+관절 마찰                    0.0 ~ 0.3
+질량 변동                    ±20%
+외부 힘 추가                 랜덤 방향/크기
+지형 마찰 계수               0.4 ~ 0.9
+엔진 시작 지연               0 ~ 20ms
+지면 텍스처                  다양한 재질
+```
+
+## 단계 2: RL 학습 실행
+
+Isaac Lab은 RSL-RL(ETH 개발 RL 라이브러리), rl_games, skrl 등 여러 RL 프레임워크와 통합됩니다. 4족 보행에는 RSL-RL의 PPO 구현이 많이 사용됩니다.
+
+```bash
+# 4족 보행 학습 시작 (실제 환경명/파라미터는 공식 문서 확인)
+./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py \
+  --task Isaac-Velocity-Rough-Anymal-C-v0 \
+  --num_envs 4096 \
+  --headless
+
+# 학습 진행 모니터링 (TensorBoard)
+tensorboard --logdir logs/rsl_rl/anymal_c
+```
+
+학습 중 TensorBoard에서 모니터링할 주요 지표:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ 주요 모니터링 지표                                           │
+├────────────────────────────┬────────────────────────────────┤
+│ 지표                       │ 의미                           │
+├────────────────────────────┼────────────────────────────────┤
+│ episode_length_mean        │ 평균 에피소드 길이 (길수록 좋음) │
+│ rew_lin_vel_xy             │ 선형 속도 추종 보상             │
+│ rew_base_height            │ 몸통 높이 유지 보상             │
+│ termination_episode        │ 넘어짐 등 강제 종료 비율       │
+│ action_rate                │ 행동 변화율 (부드러움 지표)    │
+└────────────────────────────┴────────────────────────────────┘
+```
+
+수천 개 병렬 환경에서 수천만 스텝 규모의 학습을 수행합니다(소요 시간은 하드웨어에 따라 다름). 소비자용 GPU에서는 512~1024 환경으로 조정하여 실행할 수 있습니다.
+
+## 단계 3: 정책 평가
+
+학습이 완료되면 다양한 시나리오에서 정책을 평가합니다.
+
+```bash
+# 학습된 정책 평가 실행
+./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py \
+  --task Isaac-Velocity-Rough-Anymal-C-v0 \
+  --num_envs 32 \
+  --checkpoint logs/rsl_rl/anymal_c/latest_checkpoint.pt
+
+# 특정 지형에서 평가
+./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py \
+  --task Isaac-Velocity-Rough-Anymal-C-v0 \
+  --num_envs 32 \
+  --checkpoint /path/to/checkpoint.pt \
+  --terrain stairs  # 계단 지형 테스트 (설정에 따라 다름)
+```
+
+평가 기준:
+
+1. **명령 추종율**: 목표 속도 대비 실제 이동 속도 비율
+2. **안정성**: 에피소드 당 넘어짐 횟수
+3. **에너지 효율**: 단위 이동 거리당 토크 적분값
+4. **지형 통과율**: 계단, 경사, 요철 지형 통과 성공률
+
+## 단계 4: 정책 Export
+
+평가가 만족스러우면 정책을 배포 형태로 export합니다.
+
+```python
+# 정책 ONNX export (개념 예시 — 실제 API는 Isaac Lab 버전 확인)
+import torch
+from omni.isaac.lab_tasks.utils.wrappers.rsl_rl import RslRlVecEnvWrapper
+
+# 체크포인트 로드
+policy = ActorCritic(...)
+policy.load_state_dict(torch.load("checkpoint.pt")["model_state_dict"])
+policy.eval()
+
+# ONNX export (actor network만)
+dummy_obs = torch.zeros(1, obs_dim)
+torch.onnx.export(
+    policy.actor,
+    dummy_obs,
+    "quadruped_policy.onnx",
+    input_names=["observations"],
+    output_names=["actions"],
+    dynamic_axes={"observations": {0: "batch_size"}}
+)
+
+print("Export 완료: quadruped_policy.onnx")
+```
+
+정책 export 시 함께 저장해야 할 정보:
+- 관측 벡터의 구성(어떤 값이 몇 번째 인덱스인지)
+- 행동 스케일링 파라미터
+- 관측 정규화 통계값(평균, 표준편차)
+
+## 단계 5: TensorRT 최적화
+
+Jetson이나 임베디드 GPU에 배포하기 위해 ONNX 모델을 TensorRT 엔진으로 변환합니다.
+
+```bash
+# ONNX → TensorRT 변환 (trtexec 사용)
+trtexec \
+  --onnx=quadruped_policy.onnx \
+  --saveEngine=quadruped_policy.engine \
+  --fp16 \
+  --workspace=512
+
+# 변환된 엔진 성능 벤치마크
+trtexec \
+  --loadEngine=quadruped_policy.engine \
+  --batch=1 \
+  --iterations=1000
+```
+
+FP16 변환으로 추론이 빨라질 수 있습니다(향상폭은 모델·하드웨어에 따라 다름). 더 공격적인 INT8 양자화를 사용하려면 캘리브레이션 데이터셋이 필요합니다.
+
+## 단계 6: ROS 2 통합 및 실배포
+
+학습된 정책을 ROS 2 노드로 래핑하여 실제 로봇 제어 스택에 통합합니다.
+
+```python
+# ROS 2 보행 정책 노드 (개념 이해용 의사코드)
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+from geometry_msgs.msg import Twist
+import tensorrt as trt
+import numpy as np
+
+class QuadrupedPolicyNode(Node):
+    def __init__(self):
+        super().__init__('quadruped_policy')
+
+        # TensorRT 엔진 로드
+        self.engine = self._load_engine('quadruped_policy.engine')
+
+        # IMU, 관절 상태 구독
+        self.create_subscription(JointState, '/joint_states',
+                                 self.joint_cb, 10)
+
+        # 관절 명령 발행
+        self.cmd_pub = self.create_publisher(JointState, '/joint_commands', 10)
+
+        # 속도 명령 구독 (Nav2 또는 조이스틱)
+        self.create_subscription(Twist, '/cmd_vel', self.vel_cb, 10)
+
+        # 제어 루프 (50Hz)
+        self.create_timer(0.02, self.control_loop)
+
+    def control_loop(self):
+        obs = self._build_observation()  # 현재 상태로 관측 벡터 구성
+        actions = self._run_inference(obs)  # TensorRT 추론
+        self._publish_joint_commands(actions)  # 관절 명령 발행
+```
+
+```bash
+# ROS 2 보행 노드 실행
+ros2 run quadruped_deploy policy_node \
+  --ros-args -p engine_path:=/path/to/quadruped_policy.engine
+
+# 조이스틱으로 속도 명령 전송 (테스트용)
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+  "{linear: {x: 0.3}, angular: {z: 0.0}}" --rate 10
+```
+
+## 검증 체크리스트
+
+배포 전 반드시 확인해야 할 항목들:
+
+```text
+[ ] 관측 벡터 구성이 학습 환경과 동일한지 확인
+[ ] 관측 정규화 파라미터(평균, 분산) 적용 확인
+[ ] 행동 스케일 및 클리핑 범위 확인
+[ ] 제어 루프 주파수가 학습 시 dt와 일치하는지 확인
+[ ] 비상 정지(e-stop) 메커니즘 연결 확인
+[ ] 저속 테스트 → 중속 테스트 순으로 점진적 검증
+```
+
+## 확장 아이디어
+
+기본 보행 정책 성공 후 시도해볼 수 있는 확장:
+
+1. **계층적 정책(Hierarchical Policy)**: 고수준 내비게이션(Nav2)과 저수준 보행 정책 결합
+2. **적응 보행**: 지형 분류기를 추가하여 지형별 보행 스타일 전환
+3. **조작과 보행 동시**: 보행하면서 팔(manipulator)로 물체 집기
+4. **실제 하드웨어 테스트**: Unitree, ANYbotics 등 실제 4족 로봇에 정책 이식

@@ -1,0 +1,146 @@
+[
+  {
+    "id": "q1",
+    "question": "OpenUSD(Universal Scene Description)를 원래 개발한 조직은?",
+    "options": [
+      "Pixar Animation Studios",
+      "Epic Games",
+      "Autodesk",
+      "NVIDIA"
+    ],
+    "answer": 0,
+    "explanation": "OpenUSD는 Pixar가 3D 씬 데이터의 교환과 협업을 위해 개발하였으며, 이후 오픈소스로 공개되어 NVIDIA Omniverse 등 다양한 플랫폼의 기반이 되었습니다."
+  },
+  {
+    "id": "q2",
+    "question": "USD에서 'Stage(스테이지)'란 무엇인가?",
+    "options": [
+      "단일 메시(Mesh) 파일",
+      "씬 전체의 계층 구조를 담는 최상위 컨테이너",
+      "물리 시뮬레이션 시간 단계(Timestep)",
+      "셰이더(Shader) 재질 정의 파일"
+    ],
+    "answer": 1,
+    "explanation": "USD Stage는 레이어(Layer)들이 합성된 씬 전체의 계층적 Prim 트리를 담는 최상위 컨테이너입니다."
+  },
+  {
+    "id": "q3",
+    "question": "USD에서 'Prim(프림)'이란?",
+    "options": [
+      "물리 중력 방향 벡터",
+      "카메라 렌즈 왜곡 파라미터",
+      "씬을 구성하는 기본 단위 객체",
+      "텍스처 이미지 파일 경로"
+    ],
+    "answer": 2,
+    "explanation": "Prim(Primitive)은 USD 씬 계층에서 노드 역할을 하는 기본 단위로, Mesh·Light·Camera·Xform 등 다양한 타입이 있습니다."
+  },
+  {
+    "id": "q4",
+    "question": "USD의 'Layer Composition(레이어 합성)' 기능이 제공하는 주요 이점은?",
+    "options": [
+      "물리 시뮬레이션 정밀도를 높인다",
+      "LiDAR 포인트 클라우드를 자동 생성한다",
+      "GPU 렌더링을 자동으로 병렬화한다",
+      "여러 레이어를 비파괴적으로 쌓아 씬을 협업 편집할 수 있다"
+    ],
+    "answer": 3,
+    "explanation": "USD의 레이어 합성은 여러 USD 레이어를 비파괴적으로 오버라이드·합성하여 대규모 팀이 동시에 씬을 편집할 수 있게 합니다."
+  },
+  {
+    "id": "q5",
+    "question": "USD의 'Variant(배리언트)' 기능의 주요 용도는?",
+    "options": [
+      "씬 내에서 여러 버전(외관, 상태 등)을 정의하고 전환할 수 있게 한다",
+      "GPU 메모리 캐시를 관리한다",
+      "물리 재질 계수를 자동 추정한다",
+      "애니메이션 키프레임을 보간한다"
+    ],
+    "answer": 0,
+    "explanation": "Variant를 사용하면 동일한 Prim에 여러 변형(색상, LOD, 상태 등)을 정의하고 런타임에 전환할 수 있어, Domain Randomization 등에 활용됩니다."
+  },
+  {
+    "id": "q6",
+    "question": "NVIDIA Omniverse에서 'Nucleus(뉴클리어스)'의 역할은?",
+    "options": [
+      "GPU 드라이버 업데이트 관리",
+      "USD 에셋과 씬의 공유·버전 관리를 위한 협업 서버",
+      "물리 엔진 계산 코어",
+      "신경망 학습 스케줄러"
+    ],
+    "answer": 1,
+    "explanation": "Nucleus는 Omniverse 생태계의 협업 서버로, USD 씬과 에셋을 중앙 저장·공유하며 실시간 협업 편집 및 버전 관리를 지원합니다."
+  },
+  {
+    "id": "q7",
+    "question": "MDL(Material Definition Language)이 Omniverse에서 사용되는 주된 목적은?",
+    "options": [
+      "포인트 클라우드 데이터를 압축하기 위해",
+      "로봇 관절 동역학을 정의하기 위해",
+      "물리 기반 렌더링(PBR) 재질을 정의하고 교환하기 위해",
+      "강화학습 보상 함수를 명세하기 위해"
+    ],
+    "answer": 2,
+    "explanation": "MDL은 물리 기반 렌더링(PBR) 재질을 선언적으로 정의하는 언어로, Omniverse의 RTX 렌더러에서 고품질 재질 표현에 사용됩니다."
+  },
+  {
+    "id": "q8",
+    "question": "Omniverse 'Connector(커넥터)'의 기능은?",
+    "options": [
+      "Isaac Sim의 센서 데이터를 ROS 2에 브리지하는 모듈",
+      "Jetson과 DGX 간 네트워크 통신 인터페이스",
+      "로봇 관절을 물리적으로 연결하는 하드웨어",
+      "Maya·3ds Max 등 DCC 툴을 Omniverse Nucleus에 연결하는 플러그인"
+    ],
+    "answer": 3,
+    "explanation": "Omniverse Connector는 Maya, 3ds Max, Revit 등 업계 표준 DCC(Digital Content Creation) 툴에서 Nucleus로 직접 USD 씬을 게시·동기화하는 플러그인입니다."
+  },
+  {
+    "id": "q9",
+    "question": "USD에서 'Reference(레퍼런스)' 합성 방식의 특징은?",
+    "options": [
+      "다른 USD 파일의 Prim을 현재 씬에 비파괴적으로 포함시킨다",
+      "씬의 물리 레퍼런스 프레임(기준 좌표)을 설정한다",
+      "GPU 텍스처 캐시를 참조한다",
+      "강화학습 에피소드의 기준 상태를 저장한다"
+    ],
+    "answer": 0,
+    "explanation": "USD Reference는 외부 USD 파일의 Prim을 현재 Stage에 포함시켜 재사용하는 비파괴적 합성 방식으로, 에셋 재사용과 씬 구성에 활용됩니다."
+  },
+  {
+    "id": "q10",
+    "question": "NVIDIA Omniverse의 RTX 렌더러가 지원하는 렌더링 기술은?",
+    "options": [
+      "포인트 클라우드 직접 렌더링",
+      "레이 트레이싱(Ray Tracing)과 패스 트레이싱(Path Tracing)",
+      "래스터화(Rasterization)만",
+      "복셀 기반(Voxel-based) 렌더링"
+    ],
+    "answer": 1,
+    "explanation": "Omniverse RTX 렌더러는 실시간 레이 트레이싱과 오프라인 품질의 패스 트레이싱을 모두 지원하여 물리 기반의 사실적 합성 이미지를 생성합니다."
+  },
+  {
+    "id": "q11",
+    "question": "USD에서 'Property(프로퍼티)'에 해당하는 것은?",
+    "options": [
+      "렌더러의 샘플링 설정",
+      "물리 시뮬레이션의 시간 간격",
+      "Prim의 속성(Attribute)과 관계(Relationship)를 총칭하는 개념",
+      "씬의 최상위 레이어 파일 경로"
+    ],
+    "answer": 2,
+    "explanation": "USD에서 Property는 Prim이 가지는 Attribute(값 속성)와 Relationship(다른 Prim과의 관계)를 통칭하며, 씬 데이터의 세부 정보를 담습니다."
+  },
+  {
+    "id": "q12",
+    "question": "Omniverse Kit의 주된 역할은?",
+    "options": [
+      "Isaac Sim의 물리 엔진 코어",
+      "ROS 2 메시지 타입을 생성하는 도구",
+      "하드웨어 드라이버를 설치하는 패키지 관리자",
+      "Omniverse 기반 애플리케이션을 개발하기 위한 SDK 및 런타임 프레임워크"
+    ],
+    "answer": 3,
+    "explanation": "Omniverse Kit은 Isaac Sim, Create 등 Omniverse 기반 앱을 빌드할 수 있는 확장 가능한 SDK 및 런타임 프레임워크입니다."
+  }
+]

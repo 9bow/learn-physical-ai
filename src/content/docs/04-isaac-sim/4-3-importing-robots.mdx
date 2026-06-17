@@ -1,0 +1,252 @@
+---
+title: "로봇 임포트: URDF·MJCF·USD"
+description: URDF와 MJCF 포맷의 로봇 모델을 Isaac Sim으로 임포트하고, Articulation·Joint·Drive를 설정해 시뮬레이션 가능한 상태로 만드는 전체 워크플로를 습득한다.
+sidebar:
+  order: 3
+learning_objectives:
+  - "URDF Importer로 로봇 모델을 Isaac Sim USD로 변환할 수 있다"
+  - "ArticulationRootAPI, Joint, DriveAPI의 관계와 설정 방법을 이해한다"
+  - "임포트된 로봇을 USD 파일로 저장하고 재사용하는 워크플로를 적용할 수 있다"
+prerequisites:
+  - "4-2-ui-workflow"
+  - "3-2-openusd-fundamentals"
+estimated_minutes: 35
+references:
+  - title: "Isaac Sim URDF Importer 문서"
+    url: "https://docs.isaacsim.omniverse.nvidia.com"
+    accessed: "2026-06-17"
+  - title: "ROS URDF 튜토리얼"
+    url: "https://wiki.ros.org/urdf/Tutorials"
+    accessed: "2026-06-17"
+---
+
+## 로봇 임포트가 필요한 이유
+
+Isaac Sim에서 로봇을 시뮬레이션하려면 로봇의 구조 정보—링크(link), 관절(joint), 충돌 형상, 시각적 메시—를 USD 씬으로 가져와야 합니다. 현실에서는 대부분의 로봇이 이미 URDF 또는 MJCF 형식으로 정의되어 있습니다.
+
+임포트 과정은 단순한 파일 변환이 아닙니다. URDF의 XML 관절 정의를 Isaac Sim이 물리 시뮬레이션할 수 있는 **PhysX 관절 USD Prim으로 변환**하고, 각 링크에 충돌 메시와 질량 특성을 부여하는 과정입니다.
+
+## URDF 포맷 이해
+
+URDF(Unified Robot Description Format)는 ROS 생태계의 로봇 기술 표준입니다. XML 형식으로 로봇의 운동학적(kinematic) 구조를 정의합니다.
+
+```xml
+<!-- 개념 이해용 의사코드 — URDF 기본 구조 예시 -->
+<robot name="simple_arm">
+
+  <!-- 링크 정의: 각 강체 부품 -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://robot_description/meshes/base.stl"/>
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.1" length="0.2"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="5.0"/>
+      <inertia ixx="0.1" ixy="0.0" ixz="0.0"
+               iyy="0.1" iyz="0.0" izz="0.05"/>
+    </inertial>
+  </link>
+
+  <link name="link1">
+    <!-- ... -->
+  </link>
+
+  <!-- 관절 정의: 두 링크를 연결 -->
+  <joint name="joint1" type="revolute">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <axis xyz="0 0 1"/>             <!-- 회전 축 -->
+    <limit lower="-3.14" upper="3.14"
+           effort="87" velocity="2.175"/>
+    <origin xyz="0 0 0.2" rpy="0 0 0"/>
+  </joint>
+
+</robot>
+```
+
+주요 관절 타입:
+- **revolute**: 회전 관절 (한계 있음) — 로봇 팔 관절
+- **continuous**: 연속 회전 (한계 없음) — 바퀴
+- **prismatic**: 직선 이동 관절 — 리니어 액추에이터
+- **fixed**: 고정 연결 — 리지드 연결, 상대 운동 없음
+- **floating**: 6자유도 자유 운동
+
+## URDF Importer 사용
+
+### 임포트 실행
+
+Isaac Sim에서 URDF를 임포트하는 경로는 버전에 따라 다를 수 있지만 일반적으로 다음과 같습니다.
+
+```text
+URDF Importer 실행 경로 (버전에 따라 메뉴 위치가 다를 수 있음)
+
+방법 1: 메뉴에서
+  Isaac Utils (또는 Isaac) → Workflows → URDF Importer
+
+방법 2: Extension 검색
+  Window → Extensions → "URDF" 검색 → 활성화 후 메뉴에서 접근
+
+방법 3: Python API (다음 챕터에서 상세 다룸)
+  import_robot_from_urdf() 관련 함수 사용
+```
+
+### 임포트 옵션 설명
+
+URDF Importer 다이얼로그에서 설정할 수 있는 주요 옵션들입니다.
+
+```text
+URDF Importer 주요 옵션
+
+Fix Base Link          : 체크 시 base_link를 월드에 고정
+                        로봇 팔처럼 베이스가 고정된 경우 활성화
+                        모바일 로봇은 비활성화
+
+Self Collision         : 로봇 자체 링크 간 충돌 검출
+                        기본 비활성화 (성능상 이유)
+                        필요한 경우에만 활성화
+
+Merge Fixed Joints     : fixed 관절로 연결된 링크를 단일 메시로 병합
+                        시뮬레이션 성능 향상, 디버깅은 어려워짐
+
+Collision              : 충돌 메시 처리 방식
+  - Convex Decomposition : 볼록 분해 (정밀, 성능 균형)
+  - Convex Hull          : 볼록 껍데기 (빠름, 부정확)
+  - Mesh                 : 원본 메시 그대로 (정밀, 느림)
+  - None                 : 충돌 없음
+
+Drive Type             : 관절 드라이브 제어 방식
+  - Position            : 목표 위치로 PD 제어 (로봇 팔)
+  - Velocity            : 목표 속도로 제어 (바퀴)
+  - Acceleration        : 가속도 기반 제어
+  - None                : 드라이브 없음 (수동 토크 입력)
+```
+
+### 임포트 워크플로 단계별
+
+```text
+URDF 임포트 단계별 과정
+
+①  URDF 파일 준비
+   franka_description/urdf/panda.urdf
+   또는 ROS 패키지에서 rospack find 명령으로 경로 확인
+
+②  URDF Importer 열기
+   Isaac Sim 메뉴에서 URDF Importer 실행
+
+③  파일 경로 입력
+   URDF 파일 경로 선택
+   (메시 파일도 같은 디렉토리 또는 하위 폴더에 있어야 함)
+
+④  임포트 옵션 설정
+   Fix Base Link: 로봇 팔은 체크
+   Drive Type: Position 선택 (일반 로봇 팔)
+   Collision: Convex Decomposition 권장
+
+⑤  임포트 실행
+   → Stage 트리에 로봇 Prim 계층이 생성됨
+   → Viewport에 로봇 메시가 표시됨
+
+⑥  결과 확인
+   Stage 트리에서 구조 확인
+   Physics 시뮬레이션 재생(▶)으로 동작 확인
+
+⑦  USD로 저장
+   File → Save As → Nucleus 또는 로컬 경로
+   → 이후 다른 씬에서 Reference로 재사용
+```
+
+## 임포트 후 Articulation 설정
+
+### ArticulationRootAPI의 역할
+
+임포트된 로봇이 Isaac Sim에서 관절 기반으로 제어되려면 루트 Prim에 **ArticulationRootAPI**가 적용되어야 합니다. URDF Importer가 보통 자동으로 추가하지만, 확인이 필요합니다.
+
+```text
+Articulation 구조
+
+/World/panda  ← ArticulationRootAPI 적용 (루트)
+├── base_link  ← Mesh + RigidBodyAPI + CollisionAPI
+├── link0      ← Mesh + RigidBodyAPI + CollisionAPI
+├── panda_joint1  ← PhysicsRevoluteJoint + DriveAPI
+├── link1      ← Mesh + RigidBodyAPI + CollisionAPI
+├── panda_joint2  ← PhysicsRevoluteJoint + DriveAPI
+│   ...
+└── panda_hand ← Mesh + RigidBodyAPI (말단)
+```
+
+Stage 트리에서 로봇 루트 Prim을 선택하고 Property 패널에서 **Physics > Articulation Root** API가 있는지 확인합니다. 없다면 Add → Physics → Articulation Root로 추가합니다.
+
+### Joint Drive 파라미터 조정
+
+URDF Importer가 생성한 DriveAPI의 기본 파라미터는 실제 로봇 동특성과 다를 수 있습니다. 특히 **stiffness(강성)**와 **damping(감쇠)** 파라미터는 시뮬레이션의 안정성과 반응성에 직접 영향을 줍니다.
+
+| 파라미터 | 의미 | 낮은 값 효과 | 높은 값 효과 |
+|---------|------|------------|------------|
+| stiffness | 목표 위치로 복원하는 힘 | 느리게 이동, 부드러움 | 빠르게 이동, 진동 위험 |
+| damping | 진동을 억제하는 힘 | 진동 발생 위험 | 과도한 감쇠, 느린 반응 |
+| max_force | 최대 허용 토크 | 힘이 부족해 목표 미달 | 비현실적인 힘 |
+
+```python
+# 개념 이해용 의사코드 — Joint Drive 파라미터 확인 예시
+# 실제 API는 Isaac Sim 버전에 따라 모듈명이 달라질 수 있음
+
+# Stage에서 관절 Prim 접근
+joint_prim = stage.GetPrimAtPath("/World/panda/panda_joint1")
+
+# DriveAPI를 통한 파라미터 접근
+from pxr import UsdPhysics
+drive = UsdPhysics.DriveAPI.Get(joint_prim, "angular")
+drive.GetStiffnessAttr().Set(1000.0)   # 강성 조정
+drive.GetDampingAttr().Set(100.0)      # 감쇠 조정
+drive.GetMaxForceAttr().Set(87.0)      # 최대 토크
+```
+
+## MJCF Importer
+
+MuJoCo XML Format(MJCF) 임포트 과정은 URDF와 유사하지만 몇 가지 차이점이 있습니다.
+
+```text
+URDF vs MJCF 임포트 비교
+
+┌─────────────────────┬──────────────────┬──────────────────┐
+│  특성                │   URDF           │   MJCF           │
+├─────────────────────┼──────────────────┼──────────────────┤
+│  출처 생태계         │ ROS              │ MuJoCo/Gymnasium │
+│  물리 모델          │ 외부 엔진 의존   │ MuJoCo 물리       │
+│  관절 정의          │ parent-child     │ body 트리 구조    │
+│  충돌 형상          │ 명시적 geometry  │ geom 요소         │
+│  임포트 후 주의사항  │ Drive 파라미터   │ 물리 파라미터 차이│
+│                     │ 확인             │ 상대적으로 큼     │
+└─────────────────────┴──────────────────┴──────────────────┘
+```
+
+MuJoCo와 PhysX는 물리 모델(접촉 해결, 마찰 등)이 달라 임포트 후 동일한 컨트롤러가 다르게 동작할 수 있습니다. MuJoCo에서 학습한 정책을 Isaac Sim으로 이전할 때 이 물리 파라미터 차이가 sim-to-sim 갭의 원인이 됩니다.
+
+## 저장 및 재사용 전략
+
+임포트된 로봇을 매번 다시 임포트하지 않고 재사용하려면 USD 파일로 저장하고 Reference로 활용하는 것이 핵심입니다.
+
+```text
+로봇 자산 관리 디렉토리 구조 예시
+
+/robot_project/
+├── assets/
+│   └── robots/
+│       ├── franka_panda.usd    ← 임포트 완료, 파라미터 조정된 로봇
+│       ├── ur10.usd
+│       └── spot.usd
+├── environments/
+│   ├── warehouse.usd
+│   └── tabletop.usd
+└── scenes/
+    ├── pick_and_place.usd      ← franka_panda.usd를 Reference로 사용
+    └── inspection_task.usd     ← ur10.usd를 Reference로 사용
+```
+
+이 구조를 따르면 로봇 모델 파라미터를 한 번만 조정해도 해당 모델을 참조하는 모든 씬에 자동으로 적용됩니다. 다음 챕터에서는 이렇게 준비된 로봇 모델을 포함한 완전한 시뮬레이션 씬을 구성하는 방법을 다룹니다.

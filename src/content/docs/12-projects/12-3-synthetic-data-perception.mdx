@@ -1,0 +1,298 @@
+---
+title: "프로젝트: 합성 데이터 기반 인식 모델"
+description: Isaac Sim Replicator로 합성 데이터를 생성하고, 객체 검출·세그먼테이션 모델을 학습한 후 실제 환경에서의 인식 성능을 평가합니다.
+sidebar:
+  order: 3
+learning_objectives:
+  - "Isaac Sim Replicator로 도메인 랜덤화가 적용된 합성 데이터셋을 생성할 수 있다"
+  - "합성 데이터로 학습한 검출/세그먼테이션 모델을 Isaac ROS 파이프라인에 배포할 수 있다"
+  - "합성→실제(sim-to-real) 인식 갭을 분석하고 완화하는 방법을 설명할 수 있다"
+prerequisites:
+  - "04-isaac-sim"
+  - "07-sim-to-real"
+  - "11-5-perception-pipelines"
+estimated_minutes: 38
+references:
+  - title: "Isaac Sim Replicator Documentation"
+    url: "https://docs.omniverse.nvidia.com/isaacsim/latest/replicator_tutorials/index.html"
+    accessed: "2026-06-17"
+  - title: "NVIDIA TAO Toolkit Documentation"
+    url: "https://developer.nvidia.com/tao-toolkit"
+    accessed: "2026-06-17"
+  - title: "Isaac ROS Object Detection"
+    url: "https://nvidia-isaac-ros.github.io/repositories_and_packages/isaac_ros_object_detection/index.html"
+    accessed: "2026-06-17"
+---
+
+## 프로젝트 개요
+
+실제 로봇 환경에서 인식 모델을 위한 레이블된 데이터를 수집하는 것은 매우 비용이 높습니다. 수천 장의 이미지를 촬영하고, 수작업으로 바운딩 박스를 그리고, 픽셀 단위 마스크를 생성하는 작업에는 수백 시간이 필요합니다.
+
+Isaac Sim의 **Replicator**는 이 과정을 자동화합니다. 3D 씬에서 물체 위치, 조명, 카메라 각도를 랜덤화하고 정확한 레이블을 자동 생성합니다. 이 프로젝트에서는 합성 데이터로 학습한 인식 모델이 실제 환경에서도 동작하는 전체 파이프라인을 구축합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│              합성 데이터 기반 인식 모델 파이프라인                    │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  [1] 씬 설계         [2] Replicator 랜덤화     [3] 데이터셋 생성    │
+│  3D 물체 준비  →    위치/조명/카메라 무작위  →  어노테이션 자동 생성 │
+│  환경 구성           텍스처/배경 변환           (COCO, KITTI 형식)  │
+│                             │                                        │
+│                             ▼                                        │
+│  [4] 모델 학습       [5] TensorRT 변환     [6] Isaac ROS 배포       │
+│  TAO / PyTorch  →   엔진 최적화       →   실시간 추론 파이프라인   │
+│  검증셋 평가         Jetson 최적화          성능 벤치마크            │
+│                             │                                        │
+│                             ▼                                        │
+│  [7] 실제 환경 평가                                                  │
+│  실제 카메라 이미지로 mAP 측정, 실패 케이스 분석, 데이터 보강       │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## 준비물
+
+- Isaac Sim 설치 (Replicator Extension 포함)
+- 대상 물체의 3D 모델 파일 (USD, OBJ, FBX 등)
+- Python: PyTorch, albumentations, pycocotools
+- NVIDIA TAO Toolkit (선택, TensorRT 파이프라인용)
+- Isaac ROS 환경 (배포 단계)
+
+## 단계 1: 씬 설계 및 물체 준비
+
+Replicator 씬은 학습 물체(foreground object)와 배경 환경(background)으로 구성됩니다.
+
+**물체 3D 모델**: 대상 물체의 USD 파일이 필요합니다. ShapeNet, Objaverse 등 공개 3D 데이터셋에서 다운로드하거나, 실제 물체를 3D 스캔하여 획득합니다.
+
+```python
+# Isaac Sim Replicator 씬 설정 (개념 이해용 의사코드 — 실제 API는 공식 문서 확인)
+import omni.replicator.core as rep
+
+# 씬 초기화
+with rep.new_layer():
+    # 배경 환경 (테이블/선반/컨베이어 등)
+    table = rep.create.from_usd("/path/to/table.usd")
+
+    # 대상 물체 (병, 박스, 부품 등)
+    objects = rep.create.from_usd("/path/to/target_object.usd",
+                                   semantics=[("class", "target_object")])
+
+    # 산만 물체(distractor): 다양한 무관 물체로 배경 다양화
+    distractors = rep.create.from_usd(
+        rep.utils.get_usd_files("/path/to/distractor_assets/"),
+        count=10
+    )
+```
+
+**의미론적 레이블(Semantic Label)** 지정이 핵심입니다. `("class", "target_object")` 형식으로 물체에 레이블을 부여하면 Replicator가 자동으로 어노테이션을 생성합니다.
+
+## 단계 2: 도메인 랜덤화 설정
+
+```python
+# 도메인 랜덤화 설정 (개념 이해용 의사코드)
+with rep.trigger.on_frame(num_frames=10000):  # 1만 프레임 생성
+
+    # 물체 위치 랜덤화
+    with objects:
+        rep.modify.pose(
+            position=rep.distribution.uniform((-0.3, -0.3, 0.0),
+                                              (0.3, 0.3, 0.0)),
+            rotation=rep.distribution.uniform((0, 0, -180), (0, 0, 180))
+        )
+
+    # 조명 랜덤화
+    with rep.create.light(light_type="dome"):
+        rep.modify.attribute(
+            "intensity",
+            rep.distribution.uniform(300, 1500)
+        )
+        rep.modify.attribute(
+            "color",
+            rep.distribution.uniform((0.8, 0.8, 0.6), (1.0, 1.0, 1.0))
+        )
+
+    # 카메라 위치 랜덤화
+    with camera:
+        rep.modify.pose(
+            position=rep.distribution.uniform((0.3, -0.3, 0.4),
+                                              (0.7, 0.3, 0.8)),
+            look_at=objects
+        )
+
+    # 배경 텍스처 랜덤화
+    with table:
+        rep.randomizer.texture(
+            textures=rep.utils.get_textures("/path/to/texture_library/")
+        )
+```
+
+랜덤화 범위는 실제 배포 환경을 기준으로 설정합니다. 실제 조명 범위, 카메라 각도 범위, 물체 배치 범위를 사전에 측정하고 이를 포괄하도록 설정합니다.
+
+## 단계 3: 데이터셋 생성 및 저장
+
+```python
+# 렌더러 및 어노테이터 설정
+camera = rep.create.camera(resolution=(1280, 720))
+render_product = rep.create.render_product(camera, resolution=(1280, 720))
+
+# 어노테이터: 실제로 저장할 데이터 유형
+rgb_annot = rep.annotators.get("rgb")
+bbox_annot = rep.annotators.get("bounding_box_2d_tight")  # 바운딩 박스
+seg_annot = rep.annotators.get("semantic_segmentation")    # 세그먼테이션 마스크
+depth_annot = rep.annotators.get("distance_to_camera")    # 깊이 맵
+
+rgb_annot.attach(render_product)
+bbox_annot.attach(render_product)
+seg_annot.attach(render_product)
+
+# COCO 형식으로 저장
+writer = rep.WriterRegistry.get("COCOWriter")
+writer.initialize(
+    output_dir="/path/to/dataset/",
+    semantic_types=["class"]
+)
+writer.attach(render_product)
+
+# 실행
+rep.orchestrator.run()
+```
+
+생성된 데이터셋 구조:
+
+```text
+dataset/
+├── images/
+│   ├── 000000.png
+│   ├── 000001.png
+│   └── ...          (10,000장)
+├── annotations/
+│   ├── instances_train.json  (COCO 형식)
+│   └── instances_val.json
+└── masks/
+    ├── 000000_semantic.png   (세그먼테이션 마스크)
+    └── ...
+```
+
+## 단계 4: 모델 학습
+
+### 방법 A: NVIDIA TAO Toolkit 사용
+
+TAO Toolkit은 검출(DetectNet v2, YOLO, RT-DETR), 분류, 세그먼테이션 모델을 명령행에서 쉽게 학습하는 도구입니다.
+
+```bash
+# TAO Toolkit 설치 확인 (실제 설치는 공식 문서 참조)
+tao --version
+
+# YOLOv4 학습 (개념 예시 — 실제 설정 파일 준비 필요)
+tao model yolo_v4 train \
+  -e /path/to/experiment_spec.yaml \
+  -k YOUR_NGC_API_KEY \
+  --gpus 1
+
+# 학습 후 평가
+tao model yolo_v4 evaluate \
+  -e /path/to/experiment_spec.yaml \
+  -k YOUR_NGC_API_KEY \
+  -m /path/to/trained_model.tlt
+
+# TensorRT export
+tao model yolo_v4 export \
+  -e /path/to/experiment_spec.yaml \
+  -k YOUR_NGC_API_KEY \
+  -m /path/to/trained_model.tlt \
+  --engine_file /path/to/output.engine
+```
+
+### 방법 B: PyTorch + Ultralytics YOLO
+
+```python
+# Ultralytics YOLO 학습 (개념 예시)
+from ultralytics import YOLO
+
+# COCO 사전학습 모델에서 파인튜닝
+model = YOLO("yolov8n.pt")
+
+results = model.train(
+    data="/path/to/dataset.yaml",  # 데이터셋 설정
+    epochs=100,
+    imgsz=640,
+    batch=32,
+    device=0,  # GPU 인덱스
+    pretrained=True,
+    project="synthetic_detection",
+    name="exp1"
+)
+
+# ONNX export
+model.export(format="onnx", imgsz=640)
+```
+
+## 단계 5: Isaac ROS 배포
+
+학습된 모델을 Isaac ROS 파이프라인에 통합합니다.
+
+```bash
+# TensorRT 엔진 변환 (ONNX에서)
+trtexec \
+  --onnx=yolov8n_synthetic.onnx \
+  --saveEngine=yolov8n_synthetic.engine \
+  --fp16
+
+# Isaac ROS Object Detection 런치
+ros2 launch isaac_ros_object_detection isaac_ros_yolov8.launch.py \
+  engine_file_path:=/path/to/yolov8n_synthetic.engine \
+  input_binding_names:=["images"] \
+  output_binding_names:=["output0"] \
+  network_image_width:=640 \
+  network_image_height:=640
+```
+
+## 단계 6: Sim-to-Real 인식 갭 평가
+
+합성 데이터로 학습한 모델이 실제 환경에서 어느 정도 성능을 내는지 체계적으로 평가합니다.
+
+```text
+sim-to-real 평가 프로토콜:
+
+1. 실제 카메라로 50~100장 테스트 이미지 수집
+   - 다양한 조명 조건 (자연광, 실내 형광등, 역광)
+   - 다양한 배경 (학습 씬과 다른 새로운 배경)
+   - 다양한 물체 위치와 각도
+
+2. 수동 레이블링 (참값 생성)
+
+3. 모델 추론 및 비교
+   - mAP@0.5 (IoU 0.5 기준 평균 정밀도)
+   - Precision / Recall 곡선
+   - 오탐(False Positive)과 미탐(False Negative) 분석
+
+4. 실패 케이스 분류
+   - 조명 조건 실패 → 조명 랜덤화 범위 확대
+   - 특정 각도 실패 → 카메라 각도 다양화
+   - 특정 배경 실패 → 배경 다양성 증가
+```
+
+### 도메인 갭 완화 기법
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ 도메인 갭 완화 기법                                                  │
+├──────────────────────────────┬───────────────────────────────────────┤
+│ 기법                         │ 효과                                  │
+├──────────────────────────────┼───────────────────────────────────────┤
+│ 도메인 랜덤화 범위 확대      │ 실제 환경 변수 포함 가능성 증가       │
+│ 실제 배경 이미지 합성         │ 배경 도메인 갭 완화                   │
+│ CutPaste / Mosaic 증강       │ 작은 실제 데이터로 파인튜닝           │
+│ 실제 데이터 소량 추가         │ 10~20% 실제 데이터만으로 크게 향상   │
+│ 스타일 전환 (style transfer) │ 합성 이미지를 실제처럼 변환           │
+│ Test-Time Augmentation (TTA) │ 추론 시 여러 변환 적용 후 앙상블      │
+└──────────────────────────────┴───────────────────────────────────────┘
+```
+
+## 확장 아이디어
+
+1. **3D 포즈 추정**: 바운딩 박스 검출에 그치지 않고 6-DoF 포즈까지 학습
+2. **인스턴스 세그먼테이션**: 픽셀 단위 마스크로 더 정밀한 조작 지원
+3. **다중 카메라**: 여러 카메라 시점을 동시에 활용한 3D 재구성
+4. **산업 부품 인식**: 스크류, 커넥터, PCB 등 산업 환경 특화 물체
+5. **불량 검출**: 정상/불량 물체 분류 (품질 검사 시나리오)

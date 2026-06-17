@@ -1,0 +1,172 @@
+---
+title: "Gazebo와 ROS 2"
+description: 전통적 로봇 시뮬레이터 Gazebo와 ROS 2의 통합 방법, ros_gz_bridge를 통한 데이터 교환, 장단점과 현재 위치를 이해합니다.
+sidebar:
+  order: 5
+learning_objectives:
+  - "Gazebo의 역사와 로봇 공학 생태계에서의 위치를 설명할 수 있다"
+  - "ROS 2와 Gazebo를 연결하는 ros_gz_bridge의 역할을 이해한다"
+  - "GPU 병렬 학습 관점에서 Gazebo의 한계와 강점을 비교할 수 있다"
+prerequisites:
+  - "11-ros2-isaac-ros"
+estimated_minutes: 25
+references:
+  - title: "Gazebo 공식 사이트"
+    url: "https://gazebosim.org"
+    accessed: "2026-06-17"
+  - title: "ROS 2 공식 문서"
+    url: "https://docs.ros.org"
+    accessed: "2026-06-17"
+---
+
+## Gazebo의 역사와 위치
+
+**Gazebo**는 2002년 처음 개발되어 수십 년간 로봇 연구 커뮤니티의 표준 시뮬레이터 자리를 지켜온 오픈소스 로봇 시뮬레이터입니다. Open Robotics가 관리하며 현재는 **Gazebo Harmonic**, **Gazebo Ionic** 같은 버전이 활발히 사용됩니다.
+
+> 주의: 이전에 "Gazebo"라 불리던 시뮬레이터가 **Ignition Gazebo**를 거쳐 단순히 **Gazebo**로 재브랜딩되었습니다. 구버전은 **Classic Gazebo(Gazebo 11까지)** 로 구분합니다. 문서나 패키지 이름에서 혼동에 주의하세요.
+
+Gazebo의 강점은 **생태계의 깊이**입니다.
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│                Gazebo 생태계 구성                                 │
+│                                                                  │
+│  물리 엔진 플러그인                                              │
+│  ├─ ODE (기본값)                                                │
+│  ├─ Bullet                                                       │
+│  ├─ DART                                                         │
+│  └─ NVIDIA PhysX (일부 버전)                                    │
+│                                                                  │
+│  센서 플러그인                                                   │
+│  ├─ LiDAR (2D/3D)                                               │
+│  ├─ RGB 카메라 / 깊이 카메라                                    │
+│  ├─ IMU (관성 측정 장치)                                        │
+│  ├─ GPS                                                          │
+│  └─ 접촉 센서 / 힘-토크 센서                                   │
+│                                                                  │
+│  로봇 모델                                                       │
+│  ├─ SDF (Scene Description Format)                              │
+│  ├─ URDF 변환 지원                                              │
+│  └─ 방대한 커뮤니티 모델 라이브러리                              │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+## ROS 2와 Gazebo 통합
+
+ROS 2(Robot Operating System 2)는 로봇 소프트웨어 개발의 표준 미들웨어입니다. Gazebo와 ROS 2를 연결하면 시뮬레이션 환경에서 ROS 2 기반 로봇 소프트웨어를 그대로 테스트할 수 있습니다.
+
+### ros_gz_bridge
+
+**ros_gz_bridge** 패키지가 ROS 2 토픽과 Gazebo 토픽 사이를 양방향으로 중계합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│            ROS 2 ↔ Gazebo 데이터 흐름                            │
+│                                                                  │
+│  Gazebo 시뮬레이터                                               │
+│  ├─ /world/default/model/robot/joint_state  (Gazebo 토픽)       │
+│  └─ /camera/image                           (Gazebo 토픽)       │
+│            │                                                     │
+│            ▼  ros_gz_bridge                                      │
+│  ROS 2 네트워크                                                  │
+│  ├─ /joint_states  (sensor_msgs/JointState)                     │
+│  └─ /camera/image_raw (sensor_msgs/Image)                       │
+│            │                                                     │
+│            ▼                                                     │
+│  ROS 2 노드                                                      │
+│  ├─ Nav2 (자율 이동)                                            │
+│  ├─ MoveIt 2 (모션 계획)                                        │
+│  └─ 사용자 정의 제어 노드                                        │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### 기본 통합 예시
+
+```bash
+# 터미널 1: Gazebo 실행
+gz sim robot_world.sdf
+
+# 터미널 2: ros_gz_bridge 실행
+ros2 run ros_gz_bridge parameter_bridge \
+    /cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist \
+    /joint_states@sensor_msgs/msg/JointState@gz.msgs.Model \
+    /camera/image@sensor_msgs/msg/Image@gz.msgs.Image
+
+# 터미널 3: ROS 2 노드에서 제어
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist \
+    "{linear: {x: 0.5}, angular: {z: 0.0}}"
+```
+
+### Launch 파일로 통합 자동화
+
+실제 프로젝트에서는 ROS 2 Launch 파일에 Gazebo 실행과 브릿지 설정을 통합합니다.
+
+```python
+# 개념 이해용 의사코드 — ROS 2 Launch 파일 (Python)
+from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    # Gazebo 월드 실행
+    gz_launch = IncludeLaunchDescription(
+        "ros_gz_sim/launch/gz_sim.launch.py",
+        launch_arguments={"gz_args": "robot_world.sdf"}.items(),
+    )
+
+    # ros_gz_bridge 설정
+    bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=[
+            "/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist",
+            "/joint_states@sensor_msgs/msg/JointState@gz.msgs.Model",
+        ],
+    )
+
+    return LaunchDescription([gz_launch, bridge])
+```
+
+## Gazebo의 강점
+
+**풍부한 센서 생태계**: LiDAR, GPS, IMU, 다양한 카메라를 플러그인으로 추가할 수 있습니다. 자율주행이나 드론 시뮬레이션에서 특히 유용합니다.
+
+**ROS 생태계와의 통합**: 수십 년간 쌓인 ROS 패키지(Nav2, MoveIt 2 등)를 시뮬레이션에서 바로 사용할 수 있습니다. "개발한 소프트웨어를 시뮬레이션에서 먼저 테스트한다"는 워크플로의 표준입니다.
+
+**URDF/SDF 표준**: 로봇 모델 기술 형식의 사실상 표준인 URDF를 지원합니다. 대부분의 로봇 제조사가 Gazebo용 URDF 모델을 제공합니다.
+
+**커뮤니티 문서**: 수십 년간 쌓인 튜토리얼, Stack Overflow 답변, ROS Answers 자료가 풍부합니다.
+
+## Gazebo의 한계
+
+**GPU 병렬화 미지원**: Gazebo는 단일 환경만 실행합니다. MuJoCo MJX나 ManiSkill처럼 GPU에서 수천 환경을 병렬 실행하는 기능이 없습니다. 대규모 강화학습에서 심각한 병목이 됩니다.
+
+**물리 정확성**: 접촉 처리 정확성이 MuJoCo에 비해 낮다는 평가가 많습니다. 정밀한 조작 학습에서 불리합니다.
+
+**렌더링 품질**: 기본 렌더러는 시각적 사실감이 Isaac Sim 수준에 미치지 못합니다. Sim-to-Real 갭을 줄이기 위한 포토리얼리스틱 렌더링은 추가 도구가 필요합니다.
+
+**성능**: 복잡한 씬에서 실시간 시뮬레이션이 어렵고, 학습용 빠른 시뮬레이션에는 부적합합니다.
+
+## 적합한 사용 사례
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│              Gazebo가 적합한 상황                               │
+│                                                                 │
+│  적합                                                           │
+│  ├─ ROS 2 기반 로봇 소프트웨어 통합 테스트                     │
+│  ├─ 자율 이동 (Nav2)·모션 계획 (MoveIt 2) 검증                 │
+│  ├─ 다양한 센서(LiDAR, GPS) 시뮬레이션                         │
+│  ├─ 학계·산업 표준 워크플로가 필요한 프로젝트                  │
+│  └─ 기존 ROS 1 프로젝트 마이그레이션                           │
+│                                                                 │
+│  부적합                                                         │
+│  ├─ 대규모 GPU 병렬 강화학습                                   │
+│  ├─ 정밀 접촉 조작 학습                                        │
+│  └─ 포토리얼리스틱 도메인 무작위화                              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+현실적으로 많은 로봇 프로젝트는 **Gazebo와 다른 시뮬레이터를 병용**합니다. 예를 들어 강화학습은 MuJoCo/ManiSkill에서 수행하고, 최종 통합 테스트는 ROS 2 + Gazebo 환경에서 수행합니다.
+
+다음 챕터에서는 지금까지 살펴본 모든 시뮬레이터를 종합적으로 비교하고, 프로젝트 요구사항에 맞는 시뮬레이터를 선택하는 가이드를 제공합니다.

@@ -1,0 +1,211 @@
+---
+title: "시뮬레이터 선택 가이드"
+description: Isaac Sim/Lab, MuJoCo, Genesis, SAPIEN/ManiSkill, Gazebo를 렌더링·병렬화·접촉 정확도·라이선스·용도 기준으로 종합 비교하고, 프로젝트에 맞는 시뮬레이터를 선택하는 의사결정 프레임워크를 제공합니다.
+sidebar:
+  order: 6
+learning_objectives:
+  - "주요 오픈소스 시뮬레이터를 핵심 기준으로 비교할 수 있다"
+  - "프로젝트 요구사항에 따라 적합한 시뮬레이터를 선택할 수 있다"
+  - "여러 시뮬레이터를 병용하는 현실적 워크플로를 설계할 수 있다"
+prerequisites:
+  - "10-1-mujoco-playground"
+  - "10-2-genesis"
+  - "10-3-sapien-maniskill"
+  - "10-4-robosuite-robomimic"
+  - "10-5-gazebo-ros2"
+estimated_minutes: 30
+references:
+  - title: "MuJoCo — Google DeepMind"
+    url: "https://github.com/google-deepmind/mujoco"
+    accessed: "2026-06-17"
+  - title: "NVIDIA Isaac Lab"
+    url: "https://developer.nvidia.com/isaac/lab"
+    accessed: "2026-06-17"
+  - title: "ManiSkill — GitHub"
+    url: "https://github.com/haosulab/ManiSkill"
+    accessed: "2026-06-17"
+  - title: "Genesis — GitHub"
+    url: "https://github.com/Genesis-Embodied-AI/Genesis"
+    accessed: "2026-06-17"
+---
+
+import Quiz from '../../../components/learning/Quiz.tsx';
+
+## 종합 비교표
+
+지금까지 살펴본 시뮬레이터를 주요 기준으로 비교합니다.
+
+```text
+┌──────────────┬────────────┬──────────────┬────────────┬───────────────┬──────────────┐
+│ 시뮬레이터   │ GPU 병렬   │ 렌더링       │ 접촉 정확  │ 학습 곡선    │ 주요 용도    │
+│              │ 환경       │ 품질         │ 도          │               │              │
+├──────────────┼────────────┼──────────────┼────────────┼───────────────┼──────────────┤
+│ Isaac Sim    │ 보통       │ 매우 높음    │ 높음       │ 가파름        │ 시각 합성,   │
+│ /Lab         │ (Lab 경유) │ (RTX 레이    │            │ (NVIDIA 스택) │ Sim-to-Real  │
+│              │            │ 트레이싱)    │            │               │ 연구         │
+├──────────────┼────────────┼──────────────┼────────────┼───────────────┼──────────────┤
+│ MuJoCo       │ 높음       │ 낮음         │ 매우 높음  │ 중간          │ 조작·이동    │
+│ (MJX)        │ (JAX vmap) │ (기본)       │            │               │ RL 연구 표준 │
+├──────────────┼────────────┼──────────────┼────────────┼───────────────┼──────────────┤
+│ Genesis      │ 높음       │ 중간         │ 중간       │ 낮음          │ 다중 물리    │
+│              │ (GPU 목표) │              │ (신생)     │ (신생, 문서↓) │ 연구 탐색    │
+├──────────────┼────────────┼──────────────┼────────────┼───────────────┼──────────────┤
+│ SAPIEN/      │ 높음       │ 높음         │ 중간       │ 중간~높음     │ 관절 물체    │
+│ ManiSkill    │ (PhysX)    │ (Vulkan)     │            │               │ 매니퓰레이션 │
+├──────────────┼────────────┼──────────────┼────────────┼───────────────┼──────────────┤
+│ Gazebo       │ 없음       │ 낮음~중간    │ 낮음~중간  │ 중간          │ ROS 2 통합,  │
+│              │            │              │            │ (커뮤니티↑)   │ 시스템 테스트│
+└──────────────┴────────────┴──────────────┴────────────┴───────────────┴──────────────┘
+```
+
+## 라이선스 요약
+
+라이선스는 상업적 사용 가능 여부를 결정하는 중요한 요소입니다.
+
+| 시뮬레이터 | 라이선스 | 상업적 사용 |
+|-----------|---------|-----------|
+| MuJoCo | Apache 2.0 | 자유 |
+| Gazebo | Apache 2.0 | 자유 |
+| SAPIEN | MIT | 자유 |
+| ManiSkill | MIT | 자유 |
+| Genesis | Apache 2.0 | 자유 |
+| Isaac Sim | NVIDIA 사용권 | 조건부 (무료 연구, 상업 별도) |
+| Isaac Lab | BSD-3 | 자유 |
+
+## 의사결정 트리
+
+프로젝트 요구사항에 따른 시뮬레이터 선택 가이드입니다.
+
+```text
+시뮬레이터 선택 의사결정 트리
+═══════════════════════════════
+
+프로젝트 시작
+    │
+    ▼
+[질문 1] ROS 2 통합 기반 시스템 테스트가 주목적인가?
+    ├─ YES ──▶  Gazebo + ros_gz_bridge
+    └─ NO  ──▶ [질문 2]
+
+[질문 2] NVIDIA GPU가 있고 포토리얼리스틱 렌더링이 필요한가?
+    ├─ YES ──▶  Isaac Sim / Isaac Lab
+    └─ NO  ──▶ [질문 3]
+
+[질문 3] 대규모 GPU 병렬 강화학습이 핵심인가?
+    ├─ YES ──▶ [질문 4]
+    └─ NO  ──▶ [질문 7]
+
+[질문 4] 관절 물체(서랍, 문 등) 조작이 주 과제인가?
+    ├─ YES ──▶  SAPIEN / ManiSkill
+    └─ NO  ──▶ [질문 5]
+
+[질문 5] 접촉 정확도가 매우 중요한가 (정밀 조작)?
+    ├─ YES ──▶  MuJoCo + MJX (MuJoCo Playground)
+    └─ NO  ──▶ [질문 6]
+
+[질문 6] 유연체·유체 등 비강체 물리가 필요한가?
+    ├─ YES ──▶  Genesis (신생, 검증 필요)
+    └─ NO  ──▶  MuJoCo (가장 안정적)
+
+[질문 7] 표준 모방학습 벤치마크 비교가 목적인가?
+    ├─ YES ──▶  robosuite + RoboMimic
+    └─ NO  ──▶  MuJoCo (연구 기본값)
+```
+
+## 병용 시나리오
+
+현실 프로젝트에서는 단일 시뮬레이터만 사용하는 경우가 드뭅니다. 각 시뮬레이터의 강점을 조합하는 병용 전략이 일반적입니다.
+
+### 시나리오 1: VLA 개발 파이프라인
+
+```text
+Isaac Sim         ──▶  포토리얼리스틱 시각 데이터 생성
+    +                  도메인 무작위화
+MuJoCo / MJX     ──▶  대규모 RL로 기본 정책 학습
+    +
+실제 로봇         ──▶  최종 검증·파인튜닝
+```
+
+### 시나리오 2: 매니퓰레이션 연구
+
+```text
+ManiSkill         ──▶  GPU 병렬 환경에서 RL 학습
+    +
+robosuite         ──▶  표준 벤치마크 비교
+    +
+Gazebo + ROS 2    ──▶  MoveIt 2 통합 테스트
+```
+
+### 시나리오 3: 이동 로봇 (Locomotion)
+
+```text
+MuJoCo Playground ──▶  사족 보행 RL 학습 (병렬)
+    +
+Isaac Lab         ──▶  지형 다양화, 시각 관찰 추가
+    +
+실제 로봇         ──▶  Sim-to-Real 전이
+```
+
+## 시작 비용 비교
+
+새 프로젝트에서 처음 동작하는 예제를 실행하기까지의 난이도입니다.
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│              첫 예제 실행까지의 난이도                            │
+│                                                                  │
+│  쉬움  ●──────────────────────────────── 어려움                  │
+│        │                                                         │
+│  MuJoCo                                                          │
+│  (pip install mujoco → 예제 실행)         ●                      │
+│                                                                  │
+│  Genesis                                                         │
+│  (pip install genesis → 예제 실행)        ●                      │
+│                                                                  │
+│  ManiSkill                                                       │
+│  (pip install mani_skill → env.step)       ●                    │
+│                                                                  │
+│  Gazebo + ROS 2                                                  │
+│  (ROS 2 설치 + 패키지 빌드)                    ●                │
+│                                                                  │
+│  Isaac Sim / Lab                                                 │
+│  (NVIDIA 계정 + Omniverse + 대용량 설치)             ●          │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+## 실용적 추천
+
+학습 단계별로 다음 순서를 추천합니다.
+
+**입문:** MuJoCo + Gymnasium 표준 환경(CartPole, HalfCheetah 등)으로 RL 기초 익히기.
+
+**조작 학습 입문:** robosuite의 Lift 과제 + RoboMimic 행동 복제 파이프라인.
+
+**대규모 RL 실험:** ManiSkill3의 GPU 병렬 환경으로 성능 스케일링.
+
+**시각 기반 Sim-to-Real:** NVIDIA GPU가 있다면 Isaac Sim/Lab 도전.
+
+**ROS 2 통합:** 최종 시스템을 Gazebo + ROS 2에서 통합 테스트.
+
+## 커뮤니티와 지원 현황
+
+좋은 커뮤니티 지원은 문제 해결 속도에 직접 영향을 줍니다.
+
+| 시뮬레이터 | GitHub Stars | 주요 채널 |
+|-----------|-------------|---------|
+| MuJoCo | 수천 | GitHub Issues, 구글 그룹 |
+| Gazebo | 수천 | ROS Discourse, GitHub |
+| ManiSkill | 수천 | GitHub Issues |
+| robosuite | 수천 | GitHub Issues |
+| Isaac Lab | 수천 | NVIDIA Forums, GitHub |
+| Genesis | 수만 (초기 인기) | GitHub Issues |
+
+> GitHub Stars 수치는 시점에 따라 변동이 크므로 참고만 하고, 프로젝트 선택은 커밋 활성도, Issue 응답 속도, 문서 품질로 판단하세요.
+
+## 정리
+
+시뮬레이터는 도구입니다. 가장 유명하거나 가장 새로운 것이 최선이 아닙니다. 프로젝트의 **핵심 요구사항**(GPU 병렬화, 접촉 정확도, ROS 통합, 시각 품질)을 먼저 정의하고, 그에 맞는 도구를 선택하는 것이 현실적입니다.
+
+그리고 대부분의 현실 프로젝트는 단일 시뮬레이터로 끝나지 않습니다. 각 단계마다 적합한 도구를 활용하는 **멀티 시뮬레이터 워크플로**가 Physical AI 개발의 실상에 가깝습니다.
+
+<Quiz section="10-open-simulators" client:load />

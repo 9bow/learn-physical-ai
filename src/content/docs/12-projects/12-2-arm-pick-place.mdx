@@ -1,0 +1,271 @@
+---
+title: "프로젝트: 로봇 팔 Pick-and-Place"
+description: Isaac Lab과 MoveIt 2를 활용해 로봇 팔이 물체를 집어 지정 위치에 놓는 Pick-and-Place 태스크를 강화학습 또는 모방학습으로 구현합니다.
+sidebar:
+  order: 2
+learning_objectives:
+  - "Isaac Lab에서 로봇 팔 조작 환경을 구성하고 파지 정책을 학습할 수 있다"
+  - "그리퍼 제어와 파지 성공 판정 메커니즘을 설명할 수 있다"
+  - "학습된 조작 정책과 MoveIt 2 모션 플래닝을 결합하는 방법을 파악할 수 있다"
+prerequisites:
+  - "05-isaac-lab"
+  - "06-rl-control"
+  - "08-imitation-data"
+  - "11-3-nav2-moveit"
+estimated_minutes: 38
+references:
+  - title: "Isaac Lab Manipulation Tasks"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/tutorials/index.html"
+    accessed: "2026-06-17"
+  - title: "MoveIt 2 Pick and Place Tutorial"
+    url: "https://moveit.ai/documentation/"
+    accessed: "2026-06-17"
+  - title: "Isaac Lab GitHub - Manipulation"
+    url: "https://github.com/isaac-sim/IsaacLab/tree/main/source/extensions/omni.isaac.lab_tasks/omni/isaac/lab_tasks/manipulation"
+    accessed: "2026-06-17"
+---
+
+## 프로젝트 개요
+
+로봇 팔 Pick-and-Place는 로보틱스 조작(manipulation)의 기본이자 산업 현장에서 가장 수요가 높은 태스크입니다. 이 프로젝트에서는 Isaac Lab 시뮬레이션 환경에서 로봇 팔이 불규칙하게 놓인 물체를 집어 지정 위치에 내려놓는 정책을 학습하고, 이를 ROS 2 + MoveIt 2 스택과 통합합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                  Pick-and-Place 시스템 아키텍처                       │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌───────────────────────────────────────────────────┐               │
+│  │                 인식 레이어                        │               │
+│  │  카메라 → 물체 검출 → 6-DoF 포즈 추정             │               │
+│  │  (Isaac ROS FoundationPose 또는 RL 직접 입력)     │               │
+│  └─────────────────────┬─────────────────────────────┘               │
+│                        │  물체 위치/자세 (x,y,z,R,P,Y)               │
+│                        ▼                                              │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │               계획 레이어                                    │    │
+│  │  옵션 A: RL 정책 (end-to-end, 관측→관절 명령)               │    │
+│  │  옵션 B: MoveIt 2 (모션 플래닝 + 파지 계획)                  │    │
+│  │  옵션 C: RL + MoveIt 2 하이브리드                           │    │
+│  └─────────────────────┬───────────────────────────────────────┘    │
+│                        │  관절 목표 궤적                              │
+│                        ▼                                              │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │               실행 레이어                                    │    │
+│  │  ros2_control → 관절 컨트롤러 → 그리퍼 컨트롤러             │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## 준비물
+
+- Isaac Lab 설치 및 기본 조작 환경 설정
+- ROS 2 Humble + MoveIt 2 설치 (MoveIt 2 통합 단계용)
+- 지원 로봇: Franka Emika Panda, Universal Robots UR5/UR10, Kinova, 또는 유사 6-DoF 팔
+- 로봇 URDF/USD 파일 (Isaac Lab 기본 제공 또는 공식 로봇 패키지에서 획득)
+
+## 단계 1: 조작 환경 구성
+
+Isaac Lab의 기본 조작 환경(`Isaac-Lift-Cube-Franka-v0` 등)을 활용하거나, 커스텀 환경을 구성합니다.
+
+```python
+# 조작 환경 핵심 설정 (개념 이해용 의사코드 — 실제 API는 공식 문서 확인)
+@configclass
+class PickPlaceEnvCfg(ManagerBasedRLEnvCfg):
+    sim: SimulationCfg = SimulationCfg(dt=1/120)  # 120Hz 시뮬레이션
+
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+        num_envs=2048,
+        env_spacing=1.5,
+    )
+
+    # 관측: 로봇 관절 상태 + 엔드이펙터 포즈 + 물체 포즈 + 목표 위치
+    # 행동: 관절 위치 또는 엔드이펙터 속도 (델타 포즈)
+    # 보상: 파지 성공 + 이동 완료 + 그리퍼 적절 사용 + 부드러운 동작
+```
+
+### 관측 공간 설계
+
+조작 태스크에서 관측 벡터 설계는 매우 중요합니다.
+
+```text
+관측 벡터 구성 예시:
+──────────────────────────────────────────────────────────────────
+관측 항목                      차원    비고
+──────────────────────────────────────────────────────────────────
+관절 위치 (정규화)              7      로봇 팔 7-DoF 기준
+관절 속도 (정규화)              7
+엔드이펙터 위치 (월드)          3      x, y, z
+엔드이펙터 방향 (쿼터니언)      4
+그리퍼 개방도                  1
+물체 위치 (월드 또는 로봇 상대) 3
+물체 방향 (쿼터니언)           4
+목표 위치                      3
+물체-목표 간 거리               1
+이전 행동                      8      히스토리
+──────────────────────────────────────────────────────────────────
+합계: ~41차원 (환경에 따라 다름)
+```
+
+## 단계 2: 보상 함수 설계
+
+Pick-and-Place 태스크는 희소 보상(sparse reward) 문제입니다. 정책이 우연히 물체를 집을 때까지 보상을 받지 못하면 학습이 매우 느립니다. 밀도 높은 보상(dense reward)을 설계해야 합니다.
+
+```python
+# 보상 함수 구성 예시 (개념 이해용 의사코드)
+class PickPlaceRewards:
+    # 1. 물체에 접근 보상
+    def reaching_reward(self):
+        dist = distance(ee_pos, object_pos)
+        return torch.exp(-dist * 5.0) * 0.5
+
+    # 2. 파지 보상 (그리퍼가 물체를 감쌌을 때)
+    def grasping_reward(self):
+        is_grasped = self._check_grasp()
+        return is_grasped.float() * 1.0
+
+    # 3. 물체 들어올리기 보상 (물체가 일정 높이 이상)
+    def lifting_reward(self):
+        is_lifted = (object_pos[:, 2] > lift_threshold) & is_grasped
+        return is_lifted.float() * 2.0
+
+    # 4. 목표 위치 도달 보상
+    def goal_reward(self):
+        dist_to_goal = distance(object_pos, goal_pos)
+        is_success = dist_to_goal < success_threshold
+        return is_success.float() * 10.0  # 희소 성공 보상
+
+    # 5. 동작 패널티 (부드러운 동작 유도)
+    def action_penalty(self):
+        return -torch.sum(actions ** 2, dim=-1) * 0.01
+```
+
+## 단계 3: 파지 성공 판정
+
+파지(grasp) 성공 판정은 조작 환경의 핵심 로직입니다.
+
+```python
+# 파지 성공 판정 (개념 예시)
+def check_grasp(robot, object_prim):
+    """
+    파지 성공 조건:
+    1. 그리퍼 양쪽 핑거가 물체와 접촉
+    2. 그리퍼 개방도가 물체 크기에 비례한 범위 내
+    3. 물체가 그리퍼와 함께 이동 (속도 일치)
+    """
+    left_contact = robot.gripper.left_finger.in_contact_with(object_prim)
+    right_contact = robot.gripper.right_finger.in_contact_with(object_prim)
+    gripper_width = robot.gripper.get_width()
+
+    return (left_contact and right_contact and
+            min_width < gripper_width < max_width)
+```
+
+물리 기반 파지 성공 판정 외에도, **물체 높이 기반** 판정을 함께 사용합니다. 물체가 테이블 위 일정 높이 이상으로 올라갔으면 파지 성공으로 간주합니다.
+
+## 단계 4: 학습 실행
+
+```bash
+# Pick-and-Place RL 학습 (기본 Franka 환경)
+./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py \
+  --task Isaac-Lift-Cube-Franka-v0 \
+  --num_envs 2048 \
+  --headless \
+  --max_iterations 2000
+
+# 학습 모니터링
+tensorboard --logdir logs/rsl_rl/franka_lift
+```
+
+조작 태스크는 보행보다 학습이 느립니다. 합성 시연 데이터를 활용한 **모방학습(Imitation Learning)** 으로 초기화한 뒤 RL로 파인튜닝하는 **Residual RL** 방식이 수렴 속도를 크게 향상시킵니다.
+
+```bash
+# 모방학습 사전 학습 후 RL 파인튜닝 (개념 — 실제 워크플로는 공식 문서 확인)
+./isaaclab.sh -p source/standalone/workflows/bc/train.py \
+  --task Isaac-Lift-Cube-Franka-v0 \
+  --dataset /path/to/demonstrations.hdf5
+
+# BC로 학습된 정책에서 시작하여 RL 파인튜닝
+./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py \
+  --task Isaac-Lift-Cube-Franka-v0 \
+  --pretrained_checkpoint /path/to/bc_checkpoint.pt
+```
+
+## 단계 5: MoveIt 2 통합
+
+순수 RL 접근 외에도 MoveIt 2를 활용한 하이브리드 접근이 있습니다. 인식 파이프라인에서 얻은 물체 포즈를 MoveIt 2에 전달하여 파지 계획을 수립하고 실행합니다.
+
+```python
+# MoveIt 2 Pick-and-Place (개념 이해용 의사코드 — 실제 API는 공식 문서 확인)
+import rclpy
+from moveit.planning import MoveItPy
+from geometry_msgs.msg import PoseStamped
+
+moveit = MoveItPy(node_name="pick_place_node")
+arm = moveit.get_planning_component("arm")
+gripper = moveit.get_planning_component("gripper")
+
+def pick_object(object_pose: PoseStamped):
+    # 1. 프리-그라스프 포즈 계산 (물체 위 10cm)
+    pre_grasp = compute_pre_grasp(object_pose, offset_z=0.1)
+
+    # 2. 프리-그라스프 위치로 이동
+    arm.set_goal_state(pose_stamped_msg=pre_grasp, pose_link="panda_hand")
+    arm.plan()
+    moveit.execute(arm.plan().trajectory)
+
+    # 3. 그리퍼 열기
+    gripper.set_goal_state(configuration_name="open")
+    moveit.execute(gripper.plan().trajectory)
+
+    # 4. 파지 위치로 직선 이동 (Cartesian planning)
+    moveit.plan_cartesian_path(waypoints=[object_pose])
+
+    # 5. 그리퍼 닫기 (파지)
+    gripper.set_goal_state(configuration_name="closed")
+    moveit.execute(gripper.plan().trajectory)
+
+def place_object(target_pose: PoseStamped):
+    # 목표 위치로 이동 후 그리퍼 열기 (내려놓기)
+    arm.set_goal_state(pose_stamped_msg=target_pose, pose_link="panda_hand")
+    moveit.execute(arm.plan().trajectory)
+    gripper.set_goal_state(configuration_name="open")
+    moveit.execute(gripper.plan().trajectory)
+```
+
+## 단계 6: 결과 검증
+
+```bash
+# 학습된 정책 시연
+./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py \
+  --task Isaac-Lift-Cube-Franka-v0 \
+  --num_envs 16 \
+  --checkpoint /path/to/checkpoint.pt
+
+# 성공률 측정 (100 에피소드)
+./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py \
+  --task Isaac-Lift-Cube-Franka-v0 \
+  --num_envs 100 \
+  --checkpoint /path/to/checkpoint.pt \
+  --headless
+```
+
+목표 성능 기준:
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ 평가 기준                    │ 최소 목표   │ 우수 목표      │
+├──────────────────────────────┼─────────────┼────────────────┤
+│ 파지 성공률 (랜덤 위치)      │ 70% 이상    │ 90% 이상       │
+│ 목표 배치 성공률             │ 60% 이상    │ 85% 이상       │
+│ 평균 태스크 완료 시간        │ 5초 이내    │ 3초 이내       │
+│ 물체 낙하 없이 이동 성공     │ 85% 이상    │ 95% 이상       │
+└──────────────────────────────┴─────────────┴────────────────┘
+```
+
+## 확장 아이디어
+
+1. **다중 물체 조작**: 여러 물체를 순서대로 집어 정렬하는 태스크
+2. **다양한 형상**: 구, 원통, 불규칙 형상 등 다양한 물체에 대한 일반화
+3. **외력 강건성**: 외부에서 힘이 가해지는 상황에서도 파지 유지
+4. **시각 기반 정책**: 관절 상태 대신 카메라 이미지를 직접 입력으로 사용 (end-to-end vision-based manipulation)
+5. **양손 조작**: 두 팔이 협력하는 bimanual manipulation

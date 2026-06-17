@@ -1,0 +1,239 @@
+---
+title: "Isaac Sim UI와 기본 워크플로"
+description: Isaac Sim의 주요 UI 패널 구성과 기본 조작 방법을 익히고, 시뮬레이션 실행·정지·타임라인 제어 워크플로를 습득한다.
+sidebar:
+  order: 2
+learning_objectives:
+  - "Isaac Sim의 주요 UI 패널(Viewport, Stage, Property)의 역할을 설명할 수 있다"
+  - "씬 내 물체 배치, 선택, 이동 등 기본 조작을 수행할 수 있다"
+  - "Physics 시뮬레이션 시작·정지·리셋 워크플로를 이해한다"
+prerequisites:
+  - "4-1-installation-requirements"
+estimated_minutes: 28
+references:
+  - title: "Isaac Sim 사용자 인터페이스 가이드"
+    url: "https://docs.isaacsim.omniverse.nvidia.com"
+    accessed: "2026-06-17"
+  - title: "Omniverse Kit UI 개요"
+    url: "https://docs.omniverse.nvidia.com/kit"
+    accessed: "2026-06-17"
+---
+
+## Isaac Sim UI 개요
+
+Isaac Sim은 Omniverse Kit 기반으로 만들어진 만큼, UI 구조도 Kit의 확장 가능한 패널 시스템을 따릅니다. 처음 실행하면 다소 복잡해 보이는 UI가 나타나지만, 핵심적으로 자주 사용하는 패널은 몇 가지로 압축됩니다.
+
+```text
+Isaac Sim 기본 UI 레이아웃
+
+┌──────────────────────────────────────────────────────────────┐
+│  메뉴바: File / Edit / Create / Window / Isaac / ...         │
+├───────────┬──────────────────────────────┬───────────────────┤
+│           │                              │                   │
+│  Stage    │                              │  Property 패널    │
+│  트리     │        Viewport              │  (선택 객체 속성) │
+│  (씬 계층)│        (3D 뷰포트)           │                   │
+│           │                              │  ─────────────    │
+│           │                              │  Physics 탭       │
+│           │                              │  Transform 탭     │
+│           │                              │  Material 탭      │
+│           │                              │                   │
+├───────────┴──────────────────────────────┴───────────────────┤
+│  타임라인 / 애니메이션 제어                                   │
+├──────────────────────────────────────────────────────────────┤
+│  콘솔 / 로그 패널                                            │
+└──────────────────────────────────────────────────────────────┘
+
+하단 도구막대:
+  ▶ Play   ▮▮ Pause   ■ Stop   (물리 시뮬레이션 제어)
+```
+
+## 핵심 패널 상세
+
+### Viewport — 3D 씬 시각화
+
+Viewport는 씬을 3D로 시각화하고 직접 조작하는 주요 작업 공간입니다.
+
+**카메라 조작(기본 단축키 — Alt 기반 프리셋)**:
+- **Alt + 좌클릭 드래그**: 카메라 회전(Tumble/Orbit)
+- **Alt + 중간 버튼 드래그**: 카메라 팬(Pan)
+- **Alt + 우클릭 드래그 / 마우스 휠**: 줌인/줌아웃
+- **F**: 선택한 객체로 카메라 포커스
+
+> **대체 프리셋**: Isaac Sim은 뷰포트 내비게이션 프리셋을 변경할 수 있습니다. 일부 프리셋에서는 우클릭 드래그로 회전(Fly 모드)하고 우클릭+W/A/S/D로 FPS 방식 이동하는 조작이 적용됩니다. 사용 중인 프리셋을 Viewport 설정에서 확인하세요.
+
+Viewport 상단에는 렌더링 모드 선택 버튼이 있습니다. **RTX 실시간**, **RTX 경로 추적**, **Solid(솔리드 색상)** 등을 상황에 따라 전환합니다. 물리 시뮬레이션 실행 중에는 RTX 실시간 모드가 성능상 유리합니다.
+
+```text
+Viewport 조작 빠른 참조
+
+동작              단축키/조작
+─────────────────────────────────────────
+카메라 회전       Alt + 좌클릭 드래그
+카메라 팬         Alt + 중간버튼 드래그
+줌                Alt + 우클릭 드래그 / 휠
+선택 객체 포커스   F
+전체 씬 보기       Shift + F
+이동 기즈모 활성화  W
+회전 기즈모 활성화  E
+스케일 기즈모 활성화 R
+객체 선택         좌클릭
+다중 선택         Shift + 좌클릭
+```
+
+### Stage 트리 — 씬 계층 탐색
+
+Stage 트리는 현재 씬의 **모든 USD Prim을 계층 구조로 표시**합니다. 파일 탐색기처럼 폴더(Xform, Scope)를 펼치고 접을 수 있으며, Prim을 클릭하면 Viewport에서 강조 표시되고 Property 패널에 속성이 나타납니다.
+
+Stage 트리에서 할 수 있는 주요 작업:
+- Prim **선택 및 다중 선택**
+- **Visibility 토글** (눈 아이콘): 특정 Prim을 숨기거나 표시
+- **우클릭 컨텍스트 메뉴**: Add Prim, Delete, Duplicate, Add Reference 등
+- **검색**: 트리 상단 검색창으로 특정 Prim 빠르게 찾기
+
+Stage 트리는 로봇 모델 임포트 후 관절 구조를 확인하거나, 특정 링크의 물리 설정을 찾을 때 가장 많이 사용됩니다.
+
+### Property 패널 — 속성 편집
+
+Property 패널은 Stage 트리에서 선택한 Prim의 **모든 USD Attribute와 API 속성을 표시하고 편집**할 수 있는 공간입니다.
+
+주요 탭 구성:
+- **Transform 탭**: 위치(Translate), 회전(Rotate), 스케일(Scale)을 직접 수치로 입력
+- **Physics 탭**: RigidBody API의 질량·속도, Joint의 드라이브 파라미터(stiffness, damping, limit)
+- **Material 탭**: 적용된 머티리얼 정보와 MDL 파라미터
+- **Raw USD 탭**: 모든 Attribute를 USD 형식으로 직접 확인·수정
+
+```text
+관절(Joint) Property 예시
+
+/World/Robot/panda_joint1 (PhysicsRevoluteJoint)
+├── Transform 탭
+│   └── 로컬 위치 및 축 방향
+│
+└── Physics 탭
+    ├── Drive API (DriveAPI)
+    │   ├── stiffness: 1000.0      ← 관절 강성
+    │   ├── damping: 100.0         ← 관절 감쇠
+    │   ├── target_position: 0.0  ← 목표 각도 (라디안)
+    │   └── max_force: 87.0       ← 최대 토크 (Nm)
+    │
+    └── Joint Limits
+        ├── lower: -2.897          ← 하한 (라디안)
+        └── upper: 2.897           ← 상한 (라디안)
+```
+
+## Physics 시뮬레이션 제어
+
+### Play/Pause/Stop 워크플로
+
+Isaac Sim의 물리 시뮬레이션은 세 가지 상태를 가집니다.
+
+```text
+시뮬레이션 상태 전환
+
+    ┌──────────────────────────────────────────┐
+    │                                          │
+    ▼           Play 버튼 (▶) 또는 Space       │
+  [정지 상태]──────────────────────▶ [재생 중]  │
+    (Stopped)                      (Playing)   │
+                                       │        │
+                                  Pause (▮▮)    │
+                                       │        │
+                                       ▼        │
+                                  [일시정지]     │
+                                  (Paused)      │
+                                       │        │
+                                  Stop (■) ─────┘
+```
+
+**정지 상태 (Stopped)**: 물리 시뮬레이션이 실행되지 않습니다. 씬 편집, 로봇 위치 조정, 파라미터 변경이 이 상태에서 이루어집니다. **이 상태에서의 씬이 시뮬레이션의 초기 상태**가 됩니다.
+
+**재생 중 (Playing)**: 물리 시뮬레이션이 실행됩니다. 중력이 적용되고, 충돌이 발생하며, 관절 드라이브가 작동합니다. 재생 중에도 물체를 선택하고 실시간으로 속성을 변경할 수 있습니다.
+
+**일시정지 (Paused)**: 시뮬레이션이 현재 상태에서 멈춥니다. 이 상태에서 씬을 자세히 검사하거나 속성을 변경한 후 다시 재생할 수 있습니다.
+
+**Stop**: 시뮬레이션을 종료하고 **초기 상태(정지 상태에서의 씬 구성)로 복원**합니다. 로봇이 어딘가로 이동했더라도 Stop을 누르면 원래 위치로 돌아옵니다.
+
+### Physics Scene 설정
+
+시뮬레이션 실행 전 **Physics Scene**이 씬에 존재해야 합니다. Create → Physics → Physics Scene 메뉴로 추가하거나, 기존 씬에서 `/physicsScene` Prim을 확인합니다.
+
+Physics Scene에서 설정할 수 있는 주요 파라미터:
+- **중력(Gravity)**: 기본값은 지구 중력(-9.81 m/s²)이나 다른 행성·환경 시뮬레이션을 위해 변경 가능
+- **시뮬레이션 스텝 크기**: 물리 계산의 시간 분해능 (일반적으로 1/60 또는 1/120 초)
+- **Solver 설정**: 충돌 검출 및 해결 알고리즘 파라미터
+
+## 기본 씬 조작
+
+### 기본 Prim 추가
+
+Create 메뉴 또는 Stage 트리 우클릭으로 기본 Prim을 추가할 수 있습니다.
+
+- **Create → Mesh → Cube/Sphere/Cylinder**: 기본 기하 형상
+- **Create → Light → Sphere Light/Distant Light**: 조명
+- **Create → Physics → Ground Plane**: 물리 바닥면
+- **Create → Physics → Physics Scene**: 물리 시뮬레이션 설정
+
+### 이동·회전·스케일 기즈모
+
+Viewport에서 Prim을 선택하면 변환 기즈모가 나타납니다.
+
+```text
+변환 기즈모
+
+이동 기즈모 (W키)           회전 기즈모 (E키)
+     Y                           Z 축 원
+     ↑                        ┌─────────┐
+     │     Z                  │    ●    │  Y 축 원
+     │   ↗                    │  ●   ●  │
+     └──────→ X               └─────────┘
+                                  X 축 원
+
+축별 드래그로 해당 축 방향으로만 이동/회전
+```
+
+Property 패널의 Transform 탭에서 정확한 수치를 입력해 위치·회전을 설정하는 것이 더 정밀합니다.
+
+## 일반적인 첫 시뮬레이션 워크플로
+
+Isaac Sim을 처음 사용할 때 권장하는 기본 워크플로입니다.
+
+```text
+첫 시뮬레이션 체크리스트
+
+1. 새 스테이지 생성
+   File → New → 빈 스테이지
+
+2. Physics Scene 추가
+   Create → Physics → Physics Scene
+
+3. Ground Plane 추가
+   Create → Physics → Ground Plane
+
+4. 조명 추가
+   Create → Light → Distant Light
+   (씬이 보이도록 조명 필수)
+
+5. 물체 배치
+   Create → Mesh → Cube (또는 Sphere)
+   Property 패널에서 높이 조정 (Y = 1.0 등)
+
+6. 충돌 모양 추가
+   물체 선택 → Add → Physics → Rigid Body with Colliders Preset
+   (RigidBodyAPI + CollisionAPI 자동 추가)
+
+7. 시뮬레이션 실행
+   Space 키 또는 ▶ 버튼
+   → 물체가 중력에 의해 낙하하고 바닥에 충돌하면 성공
+
+8. 정지 및 초기화
+   ■ Stop 버튼으로 초기 상태 복원
+```
+
+이 워크플로를 완료하면 Isaac Sim의 기본 물리 시뮬레이션 루프를 경험한 것입니다. 다음 단계는 로봇 모델을 임포트해 관절 제어까지 확장하는 것입니다.
+
+## 타임라인과 애니메이션
+
+Isaac Sim은 USD의 시계열 Attribute를 활용한 **키프레임 애니메이션** 기능도 지원합니다. 타임라인 패널에서 재생 헤드를 이동하며 특정 시점의 씬 상태를 확인하거나, 로봇의 관절 각도 시계열을 재생할 수 있습니다.
+
+물리 시뮬레이션 재생 중에는 타임라인이 실시간으로 진행됩니다. 시뮬레이션 결과를 USD Attribute로 기록(record)하면 나중에 타임라인으로 재생할 수 있습니다. 이 기능은 시뮬레이션 결과를 분석하거나 영상으로 렌더링할 때 활용됩니다.

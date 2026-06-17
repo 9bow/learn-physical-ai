@@ -1,0 +1,223 @@
+---
+title: "Nav2와 MoveIt 2"
+description: 자율주행 내비게이션 스택 Nav2와 로봇 팔 모션 플래닝 프레임워크 MoveIt 2의 아키텍처, 핵심 구성 요소, 활용 방법을 이해합니다.
+sidebar:
+  order: 3
+learning_objectives:
+  - "Nav2의 주요 구성 요소(BT Navigator, Planner, Controller, Costmap)의 역할을 설명할 수 있다"
+  - "행동 트리(Behavior Tree)가 Nav2에서 어떻게 내비게이션 로직을 구성하는지 설명할 수 있다"
+  - "MoveIt 2의 모션 플래닝 파이프라인과 OMPL, cuMotion의 관계를 파악할 수 있다"
+prerequisites:
+  - "11-2-isaac-ros-gems"
+estimated_minutes: 32
+references:
+  - title: "Nav2 Documentation"
+    url: "https://docs.nav2.org/"
+    accessed: "2026-06-17"
+  - title: "MoveIt 2 Documentation"
+    url: "https://moveit.ai/documentation/"
+    accessed: "2026-06-17"
+  - title: "Nav2 Behavior Trees"
+    url: "https://docs.nav2.org/behavior_trees/index.html"
+    accessed: "2026-06-17"
+---
+
+## Nav2: 자율주행 내비게이션 스택
+
+**Nav2(Navigation 2)** 는 ROS 2의 공식 자율주행 내비게이션 스택입니다. ROS 1의 move_base를 계승하고 재설계한 것으로, 모바일 로봇(이동 로봇)이 주어진 환경에서 목표 지점까지 안전하게 이동하는 데 필요한 모든 기능을 제공합니다.
+
+Nav2는 단순히 "A에서 B로 가는 경로를 계산하는" 도구가 아닙니다. 지도 관리, 장애물 회피, 회복 행동(recovery behavior), 상황 기반 의사결정까지 포함하는 완전한 내비게이션 프레임워크입니다.
+
+```text
+┌───────────────────────────────────────────────────────────────────────┐
+│                         Nav2 아키텍처                                  │
+├───────────────────────────────────────────────────────────────────────┤
+│  목표 입력 (action: /navigate_to_pose 또는 /follow_waypoints)         │
+│                              │                                         │
+│                              ▼                                         │
+│  ┌───────────────────────────────────────────────────────────────┐    │
+│  │               BT Navigator (행동 트리 실행기)                  │    │
+│  └─────────┬─────────────────────────────────────┬───────────────┘    │
+│            │                                     │                     │
+│            ▼                                     ▼                     │
+│  ┌──────────────────┐                  ┌──────────────────────┐       │
+│  │  Planner Server  │                  │  Controller Server   │       │
+│  │  (전역 경로 계획) │                  │  (지역 경로 추종)    │       │
+│  └──────────────────┘                  └──────────────────────┘       │
+│            │                                     │                     │
+│            ▼                                     ▼                     │
+│  ┌──────────────────┐                  ┌──────────────────────┐       │
+│  │  Global Costmap  │                  │  Local Costmap       │       │
+│  │  (전체 지도 기반) │                  │  (실시간 센서 기반)  │       │
+│  └──────────────────┘                  └──────────────────────┘       │
+│                                                                        │
+│  ┌─────────────────────────┐  ┌──────────────────────────────────┐   │
+│  │  Behavior Server        │  │  Smoother Server                 │   │
+│  │  (회복 행동: 스핀, 후진) │  │  (경로 평탄화)                  │   │
+│  └─────────────────────────┘  └──────────────────────────────────┘   │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+## Nav2의 핵심 구성 요소
+
+### Costmap 2D
+
+**Costmap(비용 지도)** 은 공간의 각 지점에 이동 비용(cost)을 부여한 격자 지도입니다. 장애물이 있는 곳은 높은 비용, 자유롭게 이동할 수 있는 곳은 낮은 비용이 할당됩니다. 로봇 크기에 따른 팽창(inflation) 레이어도 포함합니다.
+
+Nav2는 두 가지 Costmap을 사용합니다.
+- **Global Costmap**: SLAM이나 미리 작성한 정적 지도를 기반으로 하는 전역 비용 지도. 전체 환경의 장기 장애물 정보를 담습니다.
+- **Local Costmap**: LiDAR, 카메라, 초음파 등 실시간 센서 데이터로 업데이트되는 지역 비용 지도. 동적 장애물(사람, 이동 물체)을 반영합니다.
+
+### Planner Server (전역 경로 계획)
+
+시작점에서 목표점까지 Costmap 위에서 전역 경로를 계산합니다. 기본 플래너로는 **NavFn**(Dijkstra/A\*)와 **Smac Planner**(Hybrid-A\*, State Lattice)가 포함됩니다. 플러그인 아키텍처로 커스텀 플래너를 추가할 수 있습니다.
+
+### Controller Server (지역 경로 추종)
+
+전역 경로를 따라 실제 로봇 속도 명령(cmd_vel)을 생성합니다. 기본 컨트롤러는 **DWB(Dynamic Window Approach)** 와 **MPPI(Model Predictive Path Integral)** 입니다. MPPI는 GPU 가속이 가능하며, 복잡한 환경에서 높은 성능을 보입니다.
+
+## 행동 트리(Behavior Tree)
+
+Nav2의 가장 중요한 아키텍처 특징은 **행동 트리(Behavior Tree, BT)** 를 이용한 내비게이션 로직 구성입니다. 행동 트리는 복잡한 로봇 행동을 계층적으로 표현하는 프레임워크입니다.
+
+```text
+내비게이션 행동 트리 예시:
+
+NavigateWithReplanning (루트)
+├── ComputePathToPose (경로 계산 시도)
+│   └── 실패 시 → ClearCostmapService (코스트맵 초기화)
+│                └── ComputePathToPose (재시도)
+├── FollowPath (경로 추종)
+│   └── 실패 시 → Spin (360도 회전, 장애물 재인식)
+│                └── FollowPath (재시도)
+└── GoalReached? (목표 도달 확인)
+```
+
+행동 트리의 장점은 내비게이션 로직을 XML 파일로 정의하여 코드 변경 없이 로봇 행동을 수정할 수 있다는 점입니다. 로봇의 특성이나 환경에 맞게 BT를 교체하면 다양한 내비게이션 전략을 실험할 수 있습니다.
+
+### Nav2 실행 예시
+
+```bash
+# Nav2 전체 스택 런치 (지도 파일, 로봇 URDF 등 파라미터 설정 필요)
+ros2 launch nav2_bringup navigation_launch.py \
+  use_sim_time:=true \
+  map:=/path/to/my_map.yaml
+
+# Nav2 명령행 목표 전송 (개념 예시 — 실제 메시지 타입은 공식 문서 확인)
+ros2 action send_goal /navigate_to_pose \
+  nav2_msgs/action/NavigateToPose \
+  "{pose: {header: {frame_id: map}, pose: {position: {x: 2.0, y: 1.5, z: 0.0}, orientation: {w: 1.0}}}}"
+```
+
+## MoveIt 2: 매니퓰레이션 모션 플래닝
+
+**MoveIt 2**는 로봇 팔(매니퓰레이터)을 위한 모션 플래닝 프레임워크입니다. 관절 공간(joint space)과 작업 공간(Cartesian space)에서 경로를 계획하고, 충돌 검사, 역운동학(IK) 계산, 그리퍼 제어 등을 통합 제공합니다.
+
+```text
+┌────────────────────────────────────────────────────────────────────┐
+│                      MoveIt 2 아키텍처                              │
+├────────────────────────────────────────────────────────────────────┤
+│  사용자 인터페이스                                                  │
+│  ┌──────────────┐  ┌──────────────────┐  ┌──────────────────────┐ │
+│  │ MoveIt C++   │  │ Python MoveIt 2  │  │ RViz MoveIt Plugin   │ │
+│  │ API          │  │ API (moveit_py)  │  │ (드래그 앤 드롭 계획) │ │
+│  └──────────────┘  └──────────────────┘  └──────────────────────┘ │
+│                              │                                      │
+│                              ▼                                      │
+│  ┌────────────────────────────────────────────────────────────┐    │
+│  │                 Move Group Interface                        │    │
+│  └─────┬────────────────┬──────────────────┬──────────────────┘    │
+│        │                │                  │                        │
+│        ▼                ▼                  ▼                        │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────────────────────┐     │
+│  │ Planning │  │  Kinematics  │  │  Collision Checking       │     │
+│  │ Pipeline │  │  (KDL, TRAC- │  │  (FCL, Bullet 기반       │     │
+│  │ (OMPL,   │  │  IK 등)      │  │   충돌 감지)             │     │
+│  │ cuMotion)│  └──────────────┘  └──────────────────────────┘     │
+│  └──────────┘                                                       │
+│                              │                                      │
+│                              ▼                                      │
+│  ┌────────────────────────────────────────────────────────────┐    │
+│  │         Planning Scene (로봇 URDF + 환경 장애물)            │    │
+│  └────────────────────────────────────────────────────────────┘    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+## MoveIt 2 핵심 개념
+
+### URDF와 SRDF
+
+**URDF(Unified Robot Description Format)** 는 로봇의 링크(link)와 관절(joint) 구조를 XML로 기술합니다. MoveIt 2는 URDF를 기반으로 로봇의 기구학 모델을 구성합니다.
+
+**SRDF(Semantic Robot Description Format)** 는 MoveIt 2 전용으로, 플래닝 그룹(어떤 관절들을 함께 계획할 것인지), 사전 정의 자세(home, ready 등), 충돌 제외 쌍(항상 충돌하는 자기 충돌 제외) 등을 정의합니다.
+
+MoveIt Setup Assistant는 GUI 도구로 URDF로부터 SRDF와 MoveIt 설정 파일을 자동 생성해 줍니다.
+
+### 플래닝 파이프라인
+
+MoveIt 2의 기본 플래너는 **OMPL(Open Motion Planning Library)** 입니다. RRT, RRT\*, PRM 등 다양한 샘플링 기반 모션 플래닝 알고리즘을 포함합니다.
+
+Isaac ROS cuMotion과 통합하면 GPU에서 모션 플래닝을 수행할 수 있습니다. 특히 복잡한 장애물 환경에서 충돌 회피 경로 계산 속도가 크게 향상됩니다.
+
+### MoveIt 2 코드 예시
+
+```python
+# MoveIt 2 Python API 사용 예시 (개념 이해용, 실제 동작은 공식 문서 확인)
+import rclpy
+from moveit.planning import MoveItPy
+
+rclpy.init()
+moveit = MoveItPy(node_name="moveit_py_example")
+arm = moveit.get_planning_component("arm")  # SRDF의 플래닝 그룹명
+
+# 사전 정의 자세로 이동
+arm.set_start_state_to_current_state()
+arm.set_goal_state(configuration_name="ready")  # SRDF에 정의된 자세
+
+plan_result = arm.plan()
+if plan_result:
+    moveit.execute(plan_result.trajectory, controllers=[])
+```
+
+## Nav2와 MoveIt 2의 통합
+
+모바일 매니퓰레이터(이동하는 로봇 팔)에서는 Nav2와 MoveIt 2가 협력합니다. Nav2가 로봇을 작업 위치 근처까지 이동시키면, MoveIt 2가 팔을 제어해 물체를 집거나 배치하는 조작 작업을 수행합니다.
+
+```text
+모바일 매니퓰레이터 태스크 흐름:
+
+[목표: 선반의 물체를 집어 다른 위치에 배치]
+    │
+    ▼
+Nav2: 선반 앞까지 이동
+    │
+    ▼
+MoveIt 2: 시각 기반 물체 위치 추정 → 파지 계획 → 팔 이동 → 그리핑
+    │
+    ▼
+Nav2: 목적지까지 이동 (물체 들고)
+    │
+    ▼
+MoveIt 2: 물체 내려놓기 → 팔 홈 포지션 복귀
+```
+
+## 파라미터 설정과 튜닝
+
+Nav2와 MoveIt 2 모두 YAML 파라미터 파일로 동작을 세밀하게 조정합니다.
+
+```yaml
+# Nav2 컨트롤러 파라미터 예시 (nav2_params.yaml 일부 개념)
+controller_server:
+  ros__parameters:
+    controller_frequency: 20.0
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 56
+      model_dt: 0.05
+      batch_size: 2000
+      vx_max: 0.5
+      vy_max: 0.0
+      wz_max: 1.9
+```
+
+Nav2와 MoveIt 2는 ROS 2 생태계에서 내비게이션과 조작의 사실상 표준 스택입니다. 다음 챕터에서는 Isaac Sim과 이 스택들을 연결하는 ROS 2 Bridge를 살펴봅니다.

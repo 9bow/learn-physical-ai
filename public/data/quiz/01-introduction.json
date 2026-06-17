@@ -1,0 +1,146 @@
+[
+  {
+    "id": "q1",
+    "question": "Physical AI(피지컬 AI)의 핵심 정의로 가장 적절한 것은?",
+    "options": [
+      "물리 세계와 상호작용하며 행동하는 AI 시스템",
+      "클라우드에서만 동작하는 추론 엔진",
+      "사람의 말을 인식하는 음성 AI",
+      "텍스트와 이미지를 생성하는 대규모 언어 모델"
+    ],
+    "answer": 0,
+    "explanation": "Physical AI는 로봇·자율주행체 등 물리 세계에서 감지(Perceive)·추론(Reason)·행동(Act)하는 AI를 뜻하며, 클라우드 기반 생성형 AI와 구분됩니다."
+  },
+  {
+    "id": "q2",
+    "question": "Embodied AI(구현 AI)가 Generative AI(생성형 AI)와 가장 크게 다른 점은?",
+    "options": [
+      "더 큰 파라미터 수를 사용한다",
+      "물리적 몸체를 통해 환경과 실시간으로 상호작용한다",
+      "자연어 처리 능력이 없다",
+      "인터넷 연결 없이 동작하지 못한다"
+    ],
+    "answer": 1,
+    "explanation": "Embodied AI는 센서·액추에이터를 갖춘 물리적 몸체로 환경에 실시간 영향을 미치는 것이 핵심이며, 이 점이 텍스트·이미지를 출력하는 생성형 AI와 구별됩니다."
+  },
+  {
+    "id": "q3",
+    "question": "NVIDIA가 제안하는 Physical AI 개발의 '3-컴퓨터 패러다임' 중 학습(Training) 단계에 사용되는 컴퓨터 시스템은?",
+    "options": [
+      "Jetson",
+      "Omniverse",
+      "DGX",
+      "Drive"
+    ],
+    "answer": 2,
+    "explanation": "NVIDIA의 3-컴퓨터 패러다임은 DGX(학습), OVX(시뮬레이션용, Omniverse 실행), Jetson(배포·엣지 추론)으로 구성됩니다."
+  },
+  {
+    "id": "q4",
+    "question": "NVIDIA 3-컴퓨터 패러다임에서 시뮬레이션(Simulation) 단계를 담당하는 플랫폼은?",
+    "options": [
+      "DGX H100",
+      "Isaac ROS",
+      "Jetson AGX",
+      "Omniverse"
+    ],
+    "answer": 3,
+    "explanation": "OVX는 시뮬레이션 전용 컴퓨팅 플랫폼으로 Omniverse를 실행하며, 물리 기반 시뮬레이션과 합성 데이터 생성을 담당합니다."
+  },
+  {
+    "id": "q5",
+    "question": "Physical AI 개발에서 'Sim-to-Real Gap(시뮬-실물 간극)'이란 무엇인가?",
+    "options": [
+      "시뮬레이션에서 학습된 정책이 실제 환경에서 성능이 저하되는 문제",
+      "GPU 메모리가 부족해 시뮬레이션이 중단되는 현상",
+      "모델이 실제 이미지를 시뮬레이션 이미지로 착각하는 현상",
+      "시뮬레이터가 실제보다 더 빠르게 동작하는 현상"
+    ],
+    "answer": 0,
+    "explanation": "Sim-to-Real Gap은 시뮬레이션과 실제 물리 환경의 차이(마찰, 센서 노이즈, 외관 등) 때문에 훈련된 정책의 실물 성능이 떨어지는 핵심 난제입니다."
+  },
+  {
+    "id": "q6",
+    "question": "Physical AI 학습에서 데이터 부족 문제를 완화하는 주요 접근법으로 옳지 않은 것은?",
+    "options": [
+      "실제 로봇 원격조작(Teleoperation) 데이터 수집",
+      "클라우드 스토리지 용량 확장",
+      "합성 데이터(Synthetic Data) 생성",
+      "Domain Randomization(도메인 무작위화)"
+    ],
+    "answer": 1,
+    "explanation": "데이터 부족 해결책은 합성 데이터 생성, Domain Randomization, 원격조작 수집 등이며, 단순히 스토리지를 확장하는 것은 데이터 부족을 해결하지 못합니다."
+  },
+  {
+    "id": "q7",
+    "question": "NVIDIA Isaac 플랫폼에서 로봇 강화학습 환경 구축을 위한 프레임워크는?",
+    "options": [
+      "Isaac Replicator",
+      "Isaac ROS",
+      "Isaac Lab",
+      "Isaac Drive"
+    ],
+    "answer": 2,
+    "explanation": "Isaac Lab은 Isaac Sim 위에서 대규모 병렬 강화학습 환경을 제공하는 프레임워크로, 다양한 로봇 태스크 훈련에 사용됩니다."
+  },
+  {
+    "id": "q8",
+    "question": "Physical AI의 안전(Safety) 난제에 해당하지 않는 것은?",
+    "options": [
+      "실제 사람이나 환경에 해를 끼치는 행동 발생",
+      "예측 불가한 환경에서의 장애물 회피",
+      "학습 중 보상 해킹(Reward Hacking)으로 인한 비정상 행동",
+      "모델 파라미터 수가 너무 많아 추론이 느린 것"
+    ],
+    "answer": 3,
+    "explanation": "안전 난제는 예측 불가한 상황, 보상 해킹, 물리적 위해 등을 포함하며, 단순 추론 속도 문제는 안전 난제보다는 성능 최적화 문제에 해당합니다."
+  },
+  {
+    "id": "q9",
+    "question": "NVIDIA의 엣지(Edge) AI 배포 플랫폼으로, 로봇에 직접 탑재되는 컴퓨팅 모듈은?",
+    "options": [
+      "Jetson",
+      "A100 SXM",
+      "DGX Station",
+      "BlueField DPU"
+    ],
+    "answer": 0,
+    "explanation": "Jetson은 저전력 엣지 추론을 위해 설계된 NVIDIA의 임베디드 컴퓨팅 플랫폼으로, 로봇과 자율기기에 탑재됩니다."
+  },
+  {
+    "id": "q10",
+    "question": "Physical AI 생태계에서 ROS 2(Robot Operating System 2)의 주요 역할은?",
+    "options": [
+      "딥러닝 모델 학습을 가속하는 GPU 스케줄러",
+      "로봇 소프트웨어 컴포넌트 간 통신과 미들웨어 제공",
+      "물리 시뮬레이션 렌더링 엔진",
+      "로봇 하드웨어 회로 설계 도구"
+    ],
+    "answer": 1,
+    "explanation": "ROS 2는 로봇 개발을 위한 오픈소스 미들웨어 프레임워크로, 노드(Node) 간 메시지 통신, 하드웨어 추상화, 도구 생태계를 제공합니다."
+  },
+  {
+    "id": "q11",
+    "question": "Physical AI에서 '합성 데이터(Synthetic Data)'를 사용하는 주요 이유는?",
+    "options": [
+      "GPU 학습 효율을 높이는 데이터 형식이라서",
+      "실제 데이터보다 항상 더 높은 정확도를 보장하므로",
+      "레이블링 비용이 높고 수집이 어려운 실제 데이터를 대량으로 보완하기 위해",
+      "법적으로 실제 데이터를 수집할 수 없어서"
+    ],
+    "answer": 2,
+    "explanation": "실제 로봇 데이터는 수집 비용·위험·시간이 크기 때문에, 시뮬레이션으로 대규모 다양한 합성 데이터를 생성해 실제 데이터를 보완합니다."
+  },
+  {
+    "id": "q12",
+    "question": "다음 중 NVIDIA Isaac 생태계에 포함되지 않는 도구는?",
+    "options": [
+      "Isaac Sim",
+      "Isaac Lab",
+      "Isaac ROS",
+      "Isaac TensorFlow"
+    ],
+    "answer": 3,
+    "explanation": "NVIDIA Isaac 생태계는 Isaac Sim(시뮬레이터), Isaac Lab(RL 프레임워크), Isaac ROS(ROS 통합 패키지) 등으로 구성되며, 'Isaac TensorFlow'는 실제 존재하지 않는 도구입니다."
+  }
+]

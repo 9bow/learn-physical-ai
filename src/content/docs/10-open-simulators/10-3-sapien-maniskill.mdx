@@ -1,0 +1,147 @@
+---
+title: "SAPIEN과 ManiSkill"
+description: UCSD가 개발한 물리 시뮬레이터 SAPIEN과 GPU 병렬 매니퓰레이션 벤치마크 ManiSkill의 특징, 활용 방법, 대규모 매니퓰레이션 학습에서의 역할을 이해합니다.
+sidebar:
+  order: 3
+learning_objectives:
+  - "SAPIEN 시뮬레이터의 기반 기술과 관절 물체 지원의 의미를 설명할 수 있다"
+  - "ManiSkill이 제공하는 GPU 병렬 환경의 이점을 이해한다"
+  - "ManiSkill 환경에서 기본 강화학습 루프를 구성하는 방법을 의사코드 수준에서 설명할 수 있다"
+prerequisites:
+  - "10-1-mujoco-playground"
+  - "06-rl-control"
+estimated_minutes: 28
+references:
+  - title: "ManiSkill — GitHub"
+    url: "https://github.com/haosulab/ManiSkill"
+    accessed: "2026-06-17"
+  - title: "SAPIEN 공식 페이지"
+    url: "https://sapien.ucsd.edu"
+    accessed: "2026-06-17"
+---
+
+## SAPIEN이란
+
+**SAPIEN(Scalable And Photorealistic Interactive ENvironment)** 은 미국 UC San Diego(UCSD)의 Hao Su 연구실이 주도하여 개발한 물리 시뮬레이터입니다. **관절 물체(articulated object)** 와 풍부한 시각 렌더링에 특화되어 있습니다.
+
+### 핵심 특징
+
+**NVIDIA PhysX 기반**: SAPIEN은 NVIDIA의 PhysX 물리 엔진을 내부적으로 사용하여 강체 동역학과 접촉 처리를 수행합니다.
+
+**관절 물체 지원**: 서랍, 문, 전자 기기 뚜껑처럼 관절(joint)이 있는 물체를 시뮬레이션하는 데 강점이 있습니다. 이런 물체들은 단순 집기와 달리 관절 자유도를 고려한 조작이 필요합니다.
+
+**PartNet-Mobility 데이터셋**: SAPIEN은 수천 개의 관절 물체 3D 모델이 포함된 PartNet-Mobility 데이터셋과 함께 배포됩니다. 냉장고, 세탁기, 가구 등 실생활 물체를 포함합니다.
+
+**시각 품질**: Rasterization과 레이트레이싱 렌더링을 모두 지원하여 사실적인 카메라 이미지 생성이 가능합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│              SAPIEN 아키텍처                                      │
+│                                                                  │
+│  사용자 Python 코드                                              │
+│       │                                                          │
+│       ▼                                                          │
+│  SAPIEN Python API                                               │
+│  ├─ 씬 관리 (SceneManager)                                      │
+│  ├─ 물체 로딩 (Actor / ArticulatedObject)                       │
+│  └─ 카메라·센서 관리                                            │
+│       │                                                          │
+│       ├──────────────────────┐                                  │
+│       ▼                      ▼                                  │
+│  NVIDIA PhysX          Vulkan 렌더러                            │
+│  (물리 시뮬레이션)     (RGB, Depth, Segmentation)               │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+## ManiSkill: 매니퓰레이션 벤치마크
+
+**ManiSkill**은 SAPIEN 위에 구축된 **로봇 매니퓰레이션 벤치마크 및 학습 환경**입니다. 단순한 과제 모음이 아니라, GPU 병렬 실행을 통한 **대규모 학습**까지 지원합니다.
+
+현재 ManiSkill3(또는 ManiSkill v3)가 최신 버전이며, GPU 병렬화와 확장성이 크게 개선되었습니다.
+
+### 제공 과제 범주
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│                  ManiSkill 과제 범주                              │
+│                                                                  │
+│  기본 집기·놓기 (Tabletop Manipulation)                          │
+│  ├─ PickAndPlace: 물체 집어 목표 위치에 놓기                    │
+│  ├─ StackCube: 큐브 쌓기                                        │
+│  └─ PegInsertion: 구멍에 막대 끼우기 (접촉 풍부 과제)          │
+│                                                                  │
+│  관절 물체 조작                                                  │
+│  ├─ OpenCabinetDrawer: 서랍 열기                                │
+│  ├─ OpenCabinetDoor: 캐비닛 문 열기                             │
+│  └─ PushChair: 의자 밀기 (이동 물체)                            │
+│                                                                  │
+│  이동 매니퓰레이션 (Mobile Manipulation)                        │
+│  └─ 이동 로봇 베이스 + 로봇 팔 결합 과제                        │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### GPU 병렬 환경
+
+ManiSkill의 가장 큰 강점은 **GPU 기반 병렬 환경**입니다. SAPIEN v3의 PhysX GPU 파이프라인을 활용하여 수백~수천 개의 환경을 동시에 실행합니다.
+
+```python
+# 개념 이해용 의사코드 — ManiSkill3 API 기반
+import gymnasium as gym
+import mani_skill.envs  # 환경 등록
+
+# GPU 병렬 환경 생성
+env = gym.make(
+    "PickAndPlace-v1",
+    num_envs=512,           # 512개 환경 병렬
+    obs_mode="state",       # 상태 기반 관찰
+    control_mode="pd_ee_delta_pose",  # 엔드이펙터 제어
+    render_mode="rgb_array",
+)
+
+obs, info = env.reset()
+print(obs.shape)   # (512, obs_dim)
+
+# 병렬 행동 적용
+action = policy(obs)  # (512, action_dim)
+obs, reward, terminated, truncated, info = env.step(action)
+print(reward.shape)  # (512,)
+```
+
+### 표준 Gymnasium 인터페이스
+
+ManiSkill은 Gymnasium(OpenAI Gym의 후계) 인터페이스를 따릅니다. 기존 강화학습 라이브러리(Stable-Baselines3, CleanRL, rsl_rl 등)와 바로 연동할 수 있습니다.
+
+## 관찰 모드 (Observation Mode)
+
+ManiSkill은 다양한 관찰 형태를 지원합니다.
+
+| 모드 | 내용 | 용도 |
+|------|------|------|
+| `state` | 물체·로봇의 정확한 상태 벡터 | RL 알고리즘 개발·디버깅 |
+| `rgbd` | RGB + 깊이 이미지 | 시각 기반 정책 학습 |
+| `pointcloud` | 포인트 클라우드 | 3D 인식 기반 정책 |
+| `state_dict` | 구조화된 상태 딕셔너리 | 유연한 관찰 구성 |
+
+## 모방학습 데이터셋 통합
+
+ManiSkill은 강화학습뿐 아니라 **모방학습(imitation learning)** 도 지원합니다. 각 과제에 대한 전문가 시연 데이터를 제공하며, 이를 바로 행동 클로닝(behavior cloning)이나 역강화학습(inverse RL)에 활용할 수 있습니다.
+
+```python
+# 개념 이해용 의사코드 — 시연 데이터 로드
+from mani_skill.utils.io_utils import load_json
+from mani_skill.trajectory import load_h5_data
+
+# 제공된 전문가 시연 데이터 로드
+demos = load_h5_data("demos/PickAndPlace-v1/trajectory.h5")
+# demos: 에피소드별 관찰, 행동, 보상 포함
+```
+
+## SAPIEN/ManiSkill의 한계
+
+**학습 곡선**: SAPIEN API는 기능이 풍부하지만 MuJoCo보다 다루기 복잡합니다. 환경 커스터마이징에 더 많은 초기 학습이 필요합니다.
+
+**PhysX 의존성**: NVIDIA PhysX에 의존하므로, NVIDIA GPU가 없는 환경에서는 일부 기능이 제한됩니다.
+
+**접촉 정확성**: MuJoCo에 비해 접촉 처리가 덜 안정적이라는 보고가 있습니다. 특히 정밀한 조립 과제(PegInsertion 등)에서 시뮬레이션 품질 차이가 나타날 수 있습니다.
+
+다음 챕터에서는 모방학습의 표준 데이터셋과 알고리즘을 제공하는 robosuite와 RoboMimic을 살펴봅니다.

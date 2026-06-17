@@ -1,0 +1,302 @@
+---
+title: "프로젝트: 휴머노이드 VLA 통합"
+description: 휴머노이드 또는 매니퓰레이터에 VLA(Vision-Language-Action) 모델을 통합하여 자연어 지시에 따른 행동 생성과 시연 기반 파인튜닝 워크플로를 실습합니다.
+sidebar:
+  order: 4
+learning_objectives:
+  - "VLA 모델이 언어 지시를 로봇 행동으로 변환하는 구조를 설명할 수 있다"
+  - "NVIDIA GR00T 또는 OpenVLA 워크플로의 주요 구성 요소를 파악할 수 있다"
+  - "시연 데이터 수집과 VLA 파인튜닝의 전체 흐름을 설명할 수 있다"
+prerequisites:
+  - "09-foundation-vla"
+  - "08-imitation-data"
+  - "05-isaac-lab"
+  - "11-ros2-isaac-ros"
+estimated_minutes: 40
+references:
+  - title: "NVIDIA Isaac GR00T Documentation"
+    url: "https://developer.nvidia.com/isaac/gr00t"
+    accessed: "2026-06-17"
+  - title: "OpenVLA GitHub"
+    url: "https://github.com/openvla/openvla"
+    accessed: "2026-06-17"
+  - title: "Isaac Lab Imitation Learning"
+    url: "https://isaac-sim.github.io/IsaacLab/main/source/tutorials/index.html"
+    accessed: "2026-06-17"
+---
+
+## 프로젝트 개요
+
+VLA(Vision-Language-Action) 모델은 Physical AI의 최전선입니다. 카메라 이미지와 자연어 지시를 함께 이해하고, 이를 로봇의 행동(관절 명령)으로 직접 변환합니다. "빨간 컵을 집어서 오른쪽 선반에 놓아"처럼 구체적인 언어 지시에 따라 로봇이 동작하는 것이 목표입니다.
+
+이 프로젝트에서는 Isaac Lab 시뮬레이션 환경에서 시연 데이터를 수집하고, VLA 모델(NVIDIA GR00T 워크플로 또는 OpenVLA)을 파인튜닝하여 언어 지시 기반 조작을 구현하는 개념 실습을 진행합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│                    VLA 통합 시스템 아키텍처                           │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  자연어 지시: "Pick up the red cup and place it on the shelf"        │
+│       │                                                              │
+│       ▼                                                              │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │                     VLA 모델                                   │  │
+│  │  ┌──────────────────┐    ┌───────────────┐    ┌────────────┐  │  │
+│  │  │ Vision Encoder   │    │ Language Enc. │    │  Action    │  │  │
+│  │  │ (DINOv2/SigLIP)  │    │ (LLM)         │    │  Decoder   │  │  │
+│  │  └────────┬─────────┘    └───────┬───────┘    └─────┬──────┘  │  │
+│  │           │                      │                  │          │  │
+│  │           └──────────────────────┘                  │          │  │
+│  │               멀티모달 퓨전                          │          │  │
+│  └─────────────────────────────────────────────────────┼──────────┘  │
+│                                                         │             │
+│                                         관절 위치/속도 명령           │
+│                                                         │             │
+│  ┌──────────────────────────────────────────────────────▼─────────┐  │
+│  │  로봇 하드웨어 / 시뮬레이터 (Isaac Sim)                        │  │
+│  │  → 관절 컨트롤러 → 물체 파지/이동/배치                         │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## 준비물
+
+- Isaac Sim + Isaac Lab (시뮬레이션 환경)
+- NVIDIA GPU (VLA 모델 추론용, A10G 또는 이상 권장)
+- Python: PyTorch, transformers, HuggingFace 라이브러리
+- 시연 데이터 수집 도구 (Isaac Lab teleop 또는 spacemouse)
+
+## VLA 모델 선택
+
+이 프로젝트에서 활용할 수 있는 주요 VLA 모델:
+
+| 모델 | 개발사 | 특징 | 적합 용도 |
+|------|--------|------|-----------|
+| GR00T N1/N1.5 | NVIDIA | 휴머노이드 특화, Isaac 통합 | NVIDIA 에코시스템 |
+| OpenVLA | Stanford 등 | 오픈소스, 7B 파라미터 | 연구/커스터마이징 |
+| π0 | Physical Intelligence | 고속 실행, 플로우 매칭 | 빠른 조작 |
+
+이 프로젝트에서는 NVIDIA GR00T 워크플로를 중심으로 설명하되, OpenVLA도 참조합니다.
+
+## 단계 1: 시연 데이터 수집
+
+VLA 파인튜닝에는 고품질 시연 데이터(demonstration data)가 필수입니다. Isaac Lab에서 원격 조작(teleoperation)으로 시연을 수집합니다.
+
+```bash
+# Isaac Lab 텔레오퍼레이션 환경 실행 (스페이스마우스 또는 키보드)
+./isaaclab.sh -p source/standalone/environments/teleoperation/teleop_se3_agent.py \
+  --task Isaac-Lift-Cube-Franka-v0 \
+  --teleop_device spacemouse \
+  --num_envs 1
+
+# 키보드 기반 텔레오퍼레이션 (스페이스마우스 없는 경우)
+./isaaclab.sh -p source/standalone/environments/teleoperation/teleop_se3_agent.py \
+  --task Isaac-Lift-Cube-Franka-v0 \
+  --teleop_device keyboard \
+  --num_envs 1
+```
+
+수집 프로토콜:
+
+```text
+시연 데이터 수집 체크리스트:
+
+[ ] 태스크당 최소 50개 성공 시연 (목표: 100~200개)
+[ ] 다양한 초기 물체 위치 (균일 분포 샘플링)
+[ ] 각 시연에 언어 지시 텍스트 레이블 추가
+[ ] 실패 시연은 제외 (성공 시연만 저장)
+[ ] 시연당 기록 데이터:
+    - 타임스탬프별 관절 상태 (위치, 속도)
+    - 카메라 이미지 시퀀스 (wrist + 3인칭 권장)
+    - 그리퍼 상태
+    - 언어 지시 텍스트
+```
+
+데이터는 **RLDS(Reinforcement Learning Datasets)** 또는 **HDF5** 형식으로 저장합니다. GR00T와 OpenVLA 모두 표준화된 형식을 지원합니다.
+
+## 단계 2: 데이터 전처리 및 포맷
+
+```python
+# 시연 데이터를 LeRobot/RLDS 형식으로 변환 (개념 이해용 의사코드)
+import h5py
+import numpy as np
+from pathlib import Path
+
+def convert_to_lerobot_format(raw_demos_dir, output_path):
+    """Isaac Lab 수집 데이터를 LeRobot 형식으로 변환"""
+
+    demos = []
+    for demo_file in Path(raw_demos_dir).glob("demo_*.hdf5"):
+        with h5py.File(demo_file, 'r') as f:
+            episode = {
+                "observation.state": f["joint_states"][:],       # (T, 7)
+                "observation.images.top": f["camera_top"][:],    # (T, H, W, 3)
+                "observation.images.wrist": f["camera_wrist"][:], # (T, H, W, 3)
+                "action": f["actions"][:],                         # (T, 7)
+                "language_instruction": str(f.attrs["instruction"]),
+            }
+            demos.append(episode)
+
+    # 통계 계산 (정규화용)
+    all_actions = np.concatenate([d["action"] for d in demos])
+    action_mean = all_actions.mean(axis=0)
+    action_std = all_actions.std(axis=0)
+
+    return demos, {"action_mean": action_mean, "action_std": action_std}
+```
+
+## 단계 3: GR00T 워크플로 파인튜닝
+
+NVIDIA GR00T N1은 사전학습된 휴머노이드 파운데이션 모델입니다. 수집한 시연 데이터로 파인튜닝하면 특정 태스크에 특화된 정책을 얻을 수 있습니다.
+
+```bash
+# GR00T 파인튜닝 환경 설정 (실제 방법은 공식 문서 확인)
+# https://developer.nvidia.com/isaac/gr00t
+
+# GR00T 파인튜닝 실행 (개념 예시 — 실제 스크립트/API는 공식 문서 참조)
+python scripts/gr00t_finetune.py \
+  --model_path nvidia/GR00T-N1-2B \
+  --dataset_path /path/to/demonstrations/ \
+  --output_dir /path/to/finetuned_model/ \
+  --num_epochs 50 \
+  --learning_rate 1e-4 \
+  --batch_size 32
+```
+
+### OpenVLA 파인튜닝 대안
+
+OpenVLA는 오픈소스 VLA로 더 자유롭게 실험할 수 있습니다.
+
+```python
+# OpenVLA 파인튜닝 (개념 예시 — 실제 코드는 공식 GitHub 확인)
+from transformers import AutoModelForVision2Seq, AutoProcessor
+
+# 사전학습 모델 로드
+model = AutoModelForVision2Seq.from_pretrained(
+    "openvla/openvla-7b",
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
+processor = AutoProcessor.from_pretrained("openvla/openvla-7b")
+
+# LoRA 파인튜닝 설정 (전체 파라미터 대신 효율적 파인튜닝)
+from peft import LoraConfig, get_peft_model
+
+lora_config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    target_modules=["q_proj", "v_proj"],
+    lora_dropout=0.05,
+    bias="none"
+)
+model = get_peft_model(model, lora_config)
+
+# 학습 루프 (개념 — 실제 trainer 설정은 공식 문서 참조)
+trainer = VLATrainer(
+    model=model,
+    args=training_args,
+    train_dataset=train_dataset,
+    data_collator=data_collator
+)
+trainer.train()
+```
+
+## 단계 4: 언어 지시 기반 추론
+
+파인튜닝된 모델로 실제 추론을 수행합니다.
+
+```python
+# VLA 추론 노드 (개념 이해용 의사코드 — ROS 2 통합)
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image, JointState
+from std_msgs.msg import String
+import torch
+
+class VLAPolicyNode(Node):
+    def __init__(self):
+        super().__init__('vla_policy')
+
+        # VLA 모델 로드 (파인튜닝된 모델)
+        self.model = self._load_vla_model('/path/to/finetuned_model/')
+
+        # 언어 지시 구독
+        self.create_subscription(String, '/language_instruction',
+                                 self.instruction_cb, 10)
+
+        # 카메라 이미지 구독
+        self.create_subscription(Image, '/camera/image_raw',
+                                 self.image_cb, 10)
+
+        # 관절 명령 발행
+        self.action_pub = self.create_publisher(JointState,
+                                                '/joint_commands', 10)
+
+        # 추론 루프 (10Hz)
+        self.create_timer(0.1, self.inference_loop)
+
+    def inference_loop(self):
+        if self.current_image is None or self.instruction is None:
+            return
+
+        # VLA 추론
+        actions = self.model.predict(
+            image=self.current_image,
+            instruction=self.instruction
+        )
+
+        # 관절 명령 발행
+        self._publish_actions(actions)
+```
+
+```bash
+# VLA 정책 노드 실행
+ros2 run vla_deploy policy_node
+
+# 언어 지시 발행 (테스트)
+ros2 topic pub /language_instruction std_msgs/msg/String \
+  "{data: 'pick up the red cube and place it in the bin'}" --once
+```
+
+## 단계 5: Isaac Sim에서 검증
+
+```bash
+# Isaac Sim + VLA 정책 통합 테스트 환경 실행
+# 1. Isaac Sim 시작 및 ROS 2 Bridge 활성화
+# 2. VLA 정책 노드 실행
+ros2 run vla_deploy policy_node \
+  --ros-args -p model_path:=/path/to/finetuned_model
+
+# 3. 언어 지시 전송 및 동작 확인
+ros2 topic pub /language_instruction std_msgs/msg/String \
+  "{data: 'grasp the blue object on the table'}" --once
+
+# 4. 성공률 측정 (100 에피소드, 다양한 언어 지시)
+python eval/run_vla_eval.py \
+  --num_episodes 100 \
+  --instructions_file eval/test_instructions.json
+```
+
+## 평가 기준
+
+```text
+┌────────────────────────────────────────────────────────────────┐
+│ VLA 평가 지표                                                   │
+├─────────────────────────────────┬──────────────────────────────┤
+│ 지표                            │ 측정 방법                    │
+├─────────────────────────────────┼──────────────────────────────┤
+│ 태스크 성공률                   │ 완전 완료 에피소드 비율      │
+│ 언어 이해 정확도                │ 올바른 물체 선택 비율        │
+│ 처음 보는 지시 일반화           │ 학습에 없던 언어 표현 처리   │
+│ 처음 보는 물체 배치 일반화      │ 새로운 위치에서 성공률       │
+│ 추론 속도                       │ 초당 프레임 수 (fps)         │
+└─────────────────────────────────┴──────────────────────────────┘
+```
+
+## 확장 아이디어
+
+1. **멀티스텝 지시**: "컵을 집어서 전자레인지에 넣고 문을 닫아"처럼 여러 단계 작업
+2. **대화형 수정**: 로봇 동작 중 지시를 변경하면 즉시 적응
+3. **실패 복구**: 물체를 떨어뜨렸을 때 스스로 파악하고 재시도
+4. **휴머노이드 이식**: Franka 팔에서 학습한 정책을 휴머노이드 상체로 이식 (cross-embodiment)
+5. **시연 데이터 없는 학습**: Isaac Sim 합성 시연 + 순수 VLA 사전학습으로 소수 시연만으로 파인튜닝

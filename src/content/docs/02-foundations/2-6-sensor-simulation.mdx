@@ -1,0 +1,304 @@
+---
+title: "센서 시뮬레이션: Camera·LiDAR·IMU"
+description: RGB-D 카메라, LiDAR, IMU의 원리와 시뮬레이션 방법, 센서 노이즈 모델링, 합성 센서 데이터 생성을 이해합니다.
+sidebar:
+  order: 6
+learning_objectives:
+  - "RGB-D 카메라, LiDAR, IMU 각각의 측정 원리를 설명할 수 있다"
+  - "센서 시뮬레이션이 어떻게 이루어지는지 원리를 이해한다"
+  - "센서 노이즈 모델의 종류와 시뮬레이션 방법을 파악한다"
+  - "합성 센서 데이터가 Sim-to-Real에 미치는 영향을 이해한다"
+prerequisites:
+  - "2-1-rigid-body-dynamics"
+  - "2-2-frames-transforms"
+  - "2-4-physics-engines"
+  - "2-5-contact-friction"
+estimated_minutes: 35
+references:
+  - title: "NVIDIA Isaac Sim Sensor Documentation"
+    url: "https://docs.omniverse.nvidia.com/isaacsim/latest/features/sensors_simulation/index.html"
+    accessed: "2026-06-17"
+  - title: "Survey on Synthetic Data for Deep Learning - arXiv"
+    url: "https://arxiv.org/abs/2106.05753"
+    accessed: "2026-06-17"
+---
+
+import Quiz from '../../../components/learning/Quiz.tsx';
+
+## 센서 없이는 인식이 없다
+
+Physical AI 시스템의 핵심은 **환경 인식(perception)** 입니다. 로봇은 카메라, LiDAR, IMU 등의 센서를 통해 세계를 "느낍니다". 이 데이터를 바탕으로 어디에 있는지(위치 추정), 무엇이 있는지(물체 인식), 어떻게 행동할지(정책 실행)를 결정합니다.
+
+시뮬레이터에서 훈련할 때는 **가상 센서**가 실제 센서를 대신합니다. 시뮬레이터가 얼마나 현실적인 센서 데이터를 생성하느냐가 Sim-to-Real 갭에 직접 영향을 줍니다.
+
+## RGB-D 카메라
+
+**RGB-D 카메라**는 컬러 이미지(RGB)와 깊이 이미지(Depth)를 동시에 제공합니다.
+
+### 깊이 측정 원리
+
+| 방식 | 원리 | 대표 제품 | 특징 |
+|------|------|----------|------|
+| 구조광 (Structured Light) | 패턴 투영 후 변형 분석 | RealSense D435, Kinect v1 | 실내에서 정확, 직사광선 취약 |
+| ToF (Time of Flight) | 빛의 왕복 시간 측정 | RealSense L515, Kinect v2 | 빠른 프레임, 반사 영향 받음 |
+| 스테레오 비전 (Stereo) | 두 카메라 시차 삼각법 | ZED 카메라, KITTI | 원거리 가능, 계산 비용 큼 |
+
+### 카메라 모델: 핀홀과 내부 파라미터
+
+카메라는 3D 세계를 2D 이미지로 투영합니다. **핀홀 카메라 모델(pinhole model)**:
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              핀홀 카메라 투영                                  │
+│                                                              │
+│  3D 점 P = (X, Y, Z)   →   이미지 좌표 (u, v)               │
+│                                                              │
+│  u = fx * (X/Z) + cx                                        │
+│  v = fy * (Y/Z) + cy                                        │
+│                                                              │
+│  내부 파라미터 K (camera intrinsics):                         │
+│  K = [fx,  0, cx]                                           │
+│      [ 0, fy, cy]                                           │
+│      [ 0,  0,  1]                                           │
+│                                                              │
+│  fx, fy: 초점 거리 (픽셀 단위)                               │
+│  cx, cy: 주점 (principal point), 보통 이미지 중심 근처        │
+└──────────────────────────────────────────────────────────────┘
+```
+
+실제 카메라는 렌즈 왜곡(lens distortion)도 있습니다. **방사 왜곡(radial distortion)**은 이미지 가장자리가 휘어지게 합니다. 시뮬레이터에서 왜곡을 모델링하면 더 현실적인 합성 데이터를 생성할 수 있습니다.
+
+### Isaac Sim에서의 카메라 시뮬레이션
+
+Isaac Sim은 RTX 레이트레이싱 렌더러를 사용하여 물리 기반 포토리얼리스틱 이미지를 생성합니다. RGB, 깊이, 법선, 의미론적 분할(semantic segmentation), 인스턴스 분할 등 다양한 정보를 동시에 출력할 수 있습니다.
+
+```python
+# Isaac Sim 카메라 설정 (개념 이해용 의사코드)
+import omni.isaac.sensor as sensor
+
+camera = sensor.Camera(
+    prim_path="/World/Robot/wrist_camera",
+    resolution=(640, 480),
+    horizontal_aperture=21.0,    # mm 단위 (초점 거리 결정)
+)
+
+# 렌더링 타입 지정
+camera.set_render_products(
+    annotators=["rgb", "depth", "semantic_segmentation"]
+)
+
+# 한 프레임 캡처
+rgb_image = camera.get_rgba()        # (H, W, 4) uint8
+depth_map = camera.get_depth()       # (H, W) float32
+```
+
+## LiDAR (Light Detection and Ranging)
+
+**LiDAR**는 레이저 펄스를 방사하고 반사된 빛의 왕복 시간을 측정하여 거리를 계산합니다. 결과물은 3D 공간의 점들의 집합인 **포인트 클라우드(point cloud)** 입니다.
+
+### LiDAR의 종류
+
+| 유형 | 스캔 방식 | 대표 제품 | 용도 |
+|------|---------|----------|------|
+| 기계식 회전형 | 360° 회전 | Velodyne VLP-16, HDL-64E | 자율주행 (정확, 크고 비쌈) |
+| MEMS 고체 | 거울 진동 | Luminar Iris | 자율주행 (소형) |
+| OPA (광학 위상 배열) | 전자 빔 조향 | Quanergy | 소형, 고비용 |
+| 단일 포인트 | 단일 빔 | ToF 센서 | 근거리 거리 측정 |
+
+### 레이 캐스팅 (Ray Casting) 시뮬레이션
+
+시뮬레이터에서 LiDAR는 **레이 캐스팅** 으로 구현됩니다. 센서 위치에서 각 레이저 방향으로 광선을 발사하고, 첫 번째로 교차하는 물체의 거리를 기록합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              LiDAR 레이 캐스팅 원리                            │
+│                                                              │
+│  LiDAR 센서 ●                                                │
+│             │\                                               │
+│             │ \  ray 2 → 벽 hit, 거리 d2                    │
+│             │  \                                             │
+│    ray 1 ───┼───▶ 물체 hit, 거리 d1                          │
+│             │                                                │
+│             │    ray 3 → 아무것도 없음, 최대 거리             │
+│                                                              │
+│  출력: 각 레이 방향 + 거리 값 → 3D 포인트 클라우드            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+GPU 병렬 레이 캐스팅(RTX core 활용)으로 수백만 개의 포인트를 실시간 생성할 수 있습니다. Isaac Sim은 Velodyne, Ouster 등 실제 LiDAR의 스캔 패턴을 모델링합니다.
+
+### LiDAR 노이즈 모델
+
+실제 LiDAR에는 다음과 같은 노이즈가 있습니다.
+
+- **거리 노이즈**: 측정 거리에 가우시안 노이즈
+- **음영 효과(shadow)**: 물체 가장자리에서 스파이크 포인트 발생
+- **반사 표면**: 유리, 거울에서 레이저가 산란하거나 반사
+- **날씨 효과**: 비, 안개, 먼지에서 거짓 반사
+
+시뮬레이터에서 이 노이즈를 모델링해야 합성 LiDAR 데이터가 현실적이 됩니다.
+
+## IMU (Inertial Measurement Unit)
+
+**IMU**는 가속도(accelerometer)와 각속도(gyroscope)를 측정합니다. 일부 IMU는 자기장(magnetometer)도 포함합니다.
+
+### 측정 원리
+
+**가속도계(Accelerometer)**: 단위 질량당 비가속도(specific force)를 측정합니다. 정지 상태에서도 중력 때문에 g ≈ 9.8 m/s²를 측정합니다.
+
+```
+측정값 = a_body + R^T * g_world + noise
+
+a_body: 실제 가속도 (월드 프레임)
+R^T * g_world: 중력의 바디 프레임 성분
+noise: 센서 노이즈
+```
+
+**자이로스코프(Gyroscope)**: 각속도(rad/s)를 직접 측정합니다. MEMS 자이로는 Coriolis 효과를 이용합니다.
+
+### IMU 노이즈 모델
+
+IMU의 핵심 오차 모델:
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              IMU 오차 유형                                     │
+│                                                              │
+│  1. 화이트 노이즈 (White Noise)                               │
+│     측정값에 추가되는 가우시안 랜덤 노이즈                      │
+│     σ_a (가속도계), σ_g (자이로)                               │
+│                                                              │
+│  2. 바이어스 (Bias)                                           │
+│     고정 또는 천천히 드리프트하는 오프셋                        │
+│     b_a (가속도계 바이어스), b_g (자이로 바이어스)              │
+│                                                              │
+│  3. 스케일 팩터 오차 (Scale Factor)                            │
+│     측정값의 배율 오차                                         │
+│                                                              │
+│  자이로 바이어스가 특히 중요:                                   │
+│  바이어스 적분 → 각도 드리프트 → 위치 오차 누적                 │
+└──────────────────────────────────────────────────────────────┘
+```
+
+IMU 단독으로는 장기적으로 정확한 위치를 추정하기 어렵습니다(드리프트). 실제로는 카메라, LiDAR와 함께 **센서 융합(sensor fusion)** 으로 사용합니다. 대표적인 알고리즘이 **VIO(Visual Inertial Odometry)** 입니다.
+
+```python
+# Isaac Sim IMU 시뮬레이션 (의사코드)
+import omni.isaac.sensor as sensor
+
+imu = sensor.IMUSensor(
+    prim_path="/World/Robot/base_link/imu",
+    name="base_imu",
+    frequency=200,   # 200Hz
+    translation=[0, 0, 0.05],
+)
+
+# 노이즈 파라미터 설정 (Sim-to-Real을 위한 현실적 노이즈)
+imu_noise = {
+    "accel_noise_density": 0.0002,      # m/s²/√Hz
+    "gyro_noise_density": 0.0000388,    # rad/s/√Hz
+    "accel_random_walk": 0.003,
+    "gyro_random_walk": 0.0000258,
+}
+
+# 센서 읽기
+linear_acceleration = imu.get_linear_acceleration()   # (3,) m/s²
+angular_velocity = imu.get_angular_velocity()          # (3,) rad/s
+```
+
+## 합성 센서 데이터와 도메인 갭
+
+시뮬레이터에서 생성된 **합성(synthetic) 센서 데이터**는 실제 센서 데이터와 차이가 있습니다.
+
+### 시각(RGB) 도메인 갭
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              시각 도메인 갭 주요 원인                           │
+│                                                              │
+│  렌더링 차이:                                                 │
+│    • 조명 모델의 단순화 (환경광, 간접광)                        │
+│    • 텍스처 해상도와 현실감                                     │
+│    • 재질 반사율(BRDF) 모델의 한계                             │
+│                                                              │
+│  현실 세계의 복잡성:                                          │
+│    • 먼지, 오염, 마모                                          │
+│    • 렌즈 플레어, 모션 블러                                    │
+│    • 카메라 노이즈 패턴 (센서 의존적)                          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Isaac Sim의 RTX 렌더러는 물리 기반 렌더링(PBR)으로 도메인 갭을 줄입니다. 하지만 완전한 포토리얼리즘은 여전히 어렵습니다.
+
+### 도메인 랜덤화와 합성 데이터
+
+도메인 랜덤화는 시뮬레이터에서 다양한 조건의 데이터를 생성하여 실제 도메인에 대한 강건성을 높입니다.
+
+```python
+# 도메인 랜덤화 예시 (Isaac Sim, 의사코드)
+import omni.replicator.core as rep
+
+# 조명 랜덤화
+with rep.trigger.on_frame():
+    lights = rep.get.prims(prim_types=["SphereLight"])
+    with lights:
+        rep.randomizer.light_temperature(
+            temperature=rep.distribution.uniform(3000, 7000)
+        )
+        rep.randomizer.light_intensity(
+            intensity=rep.distribution.uniform(500, 2000)
+        )
+
+    # 물체 색상 랜덤화
+    objects = rep.get.prims(prim_types=["Mesh"])
+    with objects:
+        rep.randomizer.color(
+            colors=rep.distribution.uniform([0.0, 0.0, 0.0],
+                                             [1.0, 1.0, 1.0])
+        )
+
+    # 카메라 위치 랜덤화
+    camera = rep.get.prims(path_pattern="Camera")
+    with camera:
+        rep.randomizer.rotation(
+            rotation=rep.distribution.uniform([-10, -10, -180],
+                                               [10, 10, 180])
+        )
+```
+
+## 멀티센서 융합
+
+실제 로봇 시스템에서는 단일 센서가 아닌 **다중 센서**를 사용합니다. 각 센서는 상호 보완적입니다.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              멀티센서 상보성                                   │
+│                                                              │
+│  센서      강점                    약점                       │
+│  ────────  ──────────────────────  ─────────────────────     │
+│  RGB-D     색상/텍스처 인식        조명 의존, 유리 취약        │
+│  LiDAR     정확한 거리, 360°      색상 없음, 비쌈, 날씨 취약  │
+│  IMU       고속(200Hz+), 짧은 예측 드리프트, 절대 위치 불가   │
+│  GPS       절대 위치              실내 불가, 정확도 낮음       │
+│  열화상     야간, 열 인식          해상도 낮음, 비쌈            │
+│                                                              │
+│  카메라 + LiDAR: 3D 환경 이해                                 │
+│  LiDAR + IMU: 실내 자율 주행 SLAM                             │
+│  카메라 + IMU: VIO (Visual Inertial Odometry)                │
+└──────────────────────────────────────────────────────────────┘
+```
+
+시뮬레이터에서도 이 멀티센서 융합을 재현해야 합니다. Isaac Sim은 각 센서를 독립적으로 설정하고 동기화된 데이터 스트림을 제공합니다.
+
+## 핵심 요약
+
+- **RGB-D 카메라**: 컬러 + 깊이, 핀홀 모델, 렌즈 왜곡, 포토리얼 렌더링으로 시뮬레이션
+- **LiDAR**: 레이저 거리 측정, 포인트 클라우드, 레이 캐스팅으로 시뮬레이션, 노이즈 모델 중요
+- **IMU**: 가속도 + 각속도, 고주파 측정, 바이어스 드리프트, 센서 융합 필수
+- **도메인 갭**: 렌더링 차이, 노이즈 모델 오차가 Sim-to-Real에 영향
+- **도메인 랜덤화**: 조명, 색상, 위치 무작위화로 강건성 향상
+- **멀티센서**: 각 센서의 약점을 상호 보완
+
+이 챕터로 섹션 02 "물리 기초"가 마무리됩니다. 강체 동역학, 좌표 변환, 기구학, 물리 엔진, 접촉 모델, 센서 시뮬레이션까지 Physical AI의 물리적 기반을 체계적으로 살펴보았습니다. 다음 섹션에서는 이 기초 위에서 **NVIDIA Omniverse와 USD** 로 실제 로봇 환경을 구성하는 실습으로 넘어갑니다.
+
+<Quiz section="02-foundations" client:load />

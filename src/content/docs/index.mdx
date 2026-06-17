@@ -1,0 +1,109 @@
+---
+title: Physical AI 완전 정복
+description: NVIDIA Isaac Sim/Lab을 중심으로 Physical AI의 개념부터 실제 구현·sim-to-real 배포까지 다루는 한국어 학습 사이트
+template: splash
+hero:
+  tagline: 개념부터 NVIDIA Isaac Sim/Lab 실전 구현, sim-to-real 배포, VLA 파운데이션 모델까지 — 물리 세계와 상호작용하는 AI를 처음부터 끝까지.
+  actions:
+    - text: 학습 시작하기
+      link: /learn-physical-ai/01-introduction/1-1-what-is-physical-ai/
+      icon: right-arrow
+      variant: primary
+    - text: GitHub
+      link: https://github.com/9bow/learn-physical-ai
+      icon: external
+      variant: minimal
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+## 누구를 위한 사이트인가
+
+- **로보틱스/AI 엔지니어** — 학습 기반 로봇 제어와 sim-to-real 파이프라인을 실제로 구축하려는 분
+- **ML 연구자/대학원생** — 강화학습·모방학습·VLA 파운데이션 모델을 물리 시뮬레이션 위에서 실험하려는 분
+- **시뮬레이션 엔지니어** — NVIDIA Omniverse·Isaac Sim·Isaac Lab과 오픈소스 시뮬레이터를 비교·도입하려는 분
+- **제조/물류/휴머노이드 산업 종사자** — Physical AI를 현장에 적용하려는 분
+
+## 무엇을 배우는가
+
+각 카드를 클릭하면 해당 섹션의 첫 챕터로 이동합니다.
+
+<CardGrid>
+  <LinkCard
+    title="01. Physical AI 개론"
+    href="/learn-physical-ai/01-introduction/1-1-what-is-physical-ai/"
+    description="Physical AI/Embodied AI의 정의, NVIDIA 3-컴퓨터 패러다임, 핵심 난제와 생태계 지형도."
+  />
+  <LinkCard
+    title="02. 로보틱스 & 물리 시뮬레이션 기초"
+    href="/learn-physical-ai/02-foundations/2-1-rigid-body-dynamics/"
+    description="강체 동역학, 좌표 변환·쿼터니언, 순/역기구학, 물리 엔진과 센서 시뮬레이션."
+  />
+  <LinkCard
+    title="03. Omniverse & OpenUSD"
+    href="/learn-physical-ai/03-omniverse-usd/3-1-omniverse-overview/"
+    description="NVIDIA Omniverse 플랫폼과 OpenUSD 씬 구성, MDL 머티리얼과 RTX 렌더링."
+  />
+  <LinkCard
+    title="04. Isaac Sim 환경 구축"
+    href="/learn-physical-ai/04-isaac-sim/4-1-installation-requirements/"
+    description="설치·시스템 요구사항, 로봇 임포트(URDF/USD), Python API, Replicator 합성 데이터."
+  />
+  <LinkCard
+    title="05. Isaac Lab — 강화학습 환경"
+    href="/learn-physical-ai/05-isaac-lab/5-1-architecture-overview/"
+    description="Isaac Lab 아키텍처, 환경 설계, 대규모 병렬 시뮬레이션, RL 프레임워크 연동."
+  />
+  <LinkCard
+    title="06. 강화학습 기반 로봇 제어"
+    href="/learn-physical-ai/06-rl-control/6-1-rl-fundamentals/"
+    description="PPO·SAC, 보행·매니퓰레이션, reward shaping, curriculum, domain randomization."
+  />
+  <LinkCard
+    title="07. Sim-to-Real Transfer"
+    href="/learn-physical-ai/07-sim-to-real/7-1-reality-gap/"
+    description="Reality gap, domain randomization 전략, system identification, 실제 로봇 배포."
+  />
+  <LinkCard
+    title="08. 모방학습 & 데이터"
+    href="/learn-physical-ai/08-imitation-data/8-1-imitation-behavior-cloning/"
+    description="Behavior cloning, 원격조작 시연 수집, LeRobot, Open X-Embodiment, Diffusion Policy."
+  />
+  <LinkCard
+    title="09. Foundation Models & VLA"
+    href="/learn-physical-ai/09-foundation-vla/9-1-foundation-models-overview/"
+    description="VLA(RT-2·OpenVLA·Octo·π0), NVIDIA Isaac GR00T, Cosmos 월드 모델, 학습·평가."
+  />
+  <LinkCard
+    title="10. 오픈소스 시뮬레이터"
+    href="/learn-physical-ai/10-open-simulators/10-1-mujoco-playground/"
+    description="MuJoCo, Genesis, SAPIEN/ManiSkill, robosuite, Gazebo+ROS 2 비교·선택 가이드."
+  />
+  <LinkCard
+    title="11. ROS 2 & Isaac ROS"
+    href="/learn-physical-ai/11-ros2-isaac-ros/11-1-ros2-fundamentals/"
+    description="ROS 2 기초, Isaac ROS(GEMs), Nav2·MoveIt 2, Isaac Sim ROS bridge, 인식 파이프라인."
+  />
+  <LinkCard
+    title="12. 실전 프로젝트"
+    href="/learn-physical-ai/12-projects/12-1-quadruped-locomotion/"
+    description="4족 보행, 로봇 팔 pick-and-place, 합성 데이터 인식, 휴머노이드 VLA, Jetson 배포."
+  />
+  <LinkCard
+    title="13. 고급 주제 & 미래"
+    href="/learn-physical-ai/13-advanced/13-1-safety-reliability/"
+    description="안전성·신뢰성, 멀티로봇, 미분가능 시뮬레이션, 3D Gaussian Splatting, 연구 프런티어."
+  />
+  <LinkCard
+    title="14. 산업 적용 & 한국 생태계"
+    href="/learn-physical-ai/14-industry-korea/14-1-humanoid-industry/"
+    description="휴머노이드 산업, 물류·제조 적용, 한국 기업·연구기관, 국내에서 시작하기."
+  />
+</CardGrid>
+
+## 콘텐츠 원칙
+
+- 검증 불가능한 통계는 쓰지 않고, arXiv·공식 문서 등 stable primary source를 인용합니다.
+- 대안 기술(시뮬레이터·RL 프레임워크·VLA 모델)은 비교표로 정리합니다.
+- 모든 챕터에 시각 자료(ASCII 다이어그램 / 표 / Mermaid)를 포함합니다.
+- 실제로 실행 가능한 설치·코드 절차를 우선합니다.

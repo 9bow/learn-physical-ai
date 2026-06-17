@@ -1,0 +1,269 @@
+---
+title: "순기구학과 역기구학"
+description: DH 파라미터, 순기구학(FK)의 계산 구조, 역기구학(IK)의 해석적·수치적 방법, Jacobian과 특이점을 이해합니다.
+sidebar:
+  order: 3
+learning_objectives:
+  - "DH 파라미터의 4개 값이 무엇을 의미하는지 설명할 수 있다"
+  - "순기구학 계산 과정을 단계별로 추적할 수 있다"
+  - "역기구학의 해석적 방법과 수치적 방법의 차이를 비교할 수 있다"
+  - "Jacobian 행렬의 의미와 특이점이 발생하는 이유를 이해한다"
+prerequisites:
+  - "2-1-rigid-body-dynamics"
+  - "2-2-frames-transforms"
+estimated_minutes: 38
+references:
+  - title: "Modern Robotics: Mechanics, Planning, and Control - Lynch & Park"
+    url: "https://modernrobotics.northwestern.edu/"
+    accessed: "2026-06-17"
+  - title: "Introduction to Robotics: Mechanics and Control - Craig"
+    url: "https://www.pearson.com/en-us/subject-catalog/p/introduction-to-robotics-mechanics-and-control/P200000003486"
+    accessed: "2026-06-17"
+---
+
+## 기구학의 핵심 질문
+
+로봇 팔의 기구학은 두 가지 방향의 질문으로 이루어집니다.
+
+**순기구학(Forward Kinematics, FK)**: "관절 각도가 주어졌을 때, 엔드이펙터의 위치와 자세는 어디인가?"
+
+**역기구학(Inverse Kinematics, IK)**: "엔드이펙터를 원하는 위치와 자세에 놓으려면 관절 각도를 어떻게 설정해야 하는가?"
+
+직관적으로 역기구학이 더 어렵습니다. 순기구학은 하나의 답이 있지만, 역기구학은 여러 개의 해가 있거나(중복 자유도), 해가 아예 없을 수도 있습니다.
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│             순기구학 vs 역기구학                             │
+│                                                             │
+│  순기구학 (FK):                                             │
+│  관절 각도 q = [θ1, θ2, ..., θn]                           │
+│           │                                                 │
+│           ▼ (변환 행렬 곱)                                  │
+│  EE 자세 T = T_0E(q)   → 유일한 답                          │
+│                                                             │
+│  역기구학 (IK):                                             │
+│  원하는 EE 자세 T_desired                                   │
+│           │                                                 │
+│           ▼ (비선형 방정식 풀기)                             │
+│  관절 각도 q = IK(T_desired)   → 여러 해 가능, 또는 해 없음 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Denavit-Hartenberg(DH) 파라미터
+
+**DH 파라미터**는 연속된 관절-링크 구조를 표준화된 방식으로 기술하는 4개의 파라미터입니다. 1955년 Denavit와 Hartenberg가 제안했으며, 로보틱스 교과서와 산업 표준에서 널리 사용됩니다.
+
+각 관절 i에 대해 4개의 파라미터를 정의합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              DH 파라미터 정의                                  │
+│                                                              │
+│  파라미터    의미                           유형             │
+│  ─────────  ─────────────────────────────  ──────           │
+│  θi (theta) z축 중심 회전 각도              관절 변수*        │
+│  di         z축 방향 이동 거리              관절 변수*        │
+│  ai (a)     x축 방향 링크 길이(공통수선 길이) 링크 상수       │
+│  αi (alpha) x축 중심 비틀림 각도            링크 상수         │
+│                                                              │
+│  * 회전 관절: θi가 변수, di는 상수                            │
+│  * 병진 관절: di가 변수, θi는 상수                            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+각 관절-링크에 해당하는 DH 변환 행렬은 4개의 기본 변환을 순서대로 곱한 것입니다.
+
+```
+T_i = Rot(z, θi) * Trans(z, di) * Trans(x, ai) * Rot(x, αi)
+
+즉, 각 DH 변환은:
+  1. z축 중심으로 θi 회전
+  2. z축 방향으로 di 이동
+  3. x축 방향으로 ai 이동
+  4. x축 중심으로 αi 회전
+```
+
+## 순기구학 계산
+
+6자유도 로봇 팔의 순기구학은 6개의 DH 변환 행렬을 곱하여 구합니다.
+
+```
+T_0E(q) = T_01(θ1) * T_12(θ2) * T_23(θ3) * T_34(θ4) * T_45(θ5) * T_56(θ6)
+```
+
+여기서 q = [θ1, θ2, θ3, θ4, θ5, θ6]는 관절 각도 벡터입니다.
+
+개념 이해용 의사코드:
+
+```python
+import numpy as np
+
+def dh_transform(theta, d, a, alpha):
+    """DH 파라미터로 4x4 동차변환행렬 생성"""
+    ct, st = np.cos(theta), np.sin(theta)
+    ca, sa = np.cos(alpha), np.sin(alpha)
+    return np.array([
+        [ct,  -st*ca,  st*sa,  a*ct],
+        [st,   ct*ca, -ct*sa,  a*st],
+        [0,      sa,     ca,     d ],
+        [0,       0,      0,     1 ]
+    ])
+
+def forward_kinematics(joint_angles, dh_params):
+    """
+    joint_angles: [θ1, θ2, ..., θn]
+    dh_params: [(d, a, alpha), ...] for each joint
+    반환: 4x4 엔드이펙터 변환 행렬
+    """
+    T = np.eye(4)
+    for theta, (d, a, alpha) in zip(joint_angles, dh_params):
+        T = T @ dh_transform(theta, d, a, alpha)
+    return T
+
+# 예: 3자유도 평면 로봇 (링크 길이 각 1m)
+dh_params = [
+    (0, 1.0, 0),    # 관절 1: d=0, a=1, alpha=0
+    (0, 1.0, 0),    # 관절 2
+    (0, 1.0, 0),    # 관절 3
+]
+joint_angles = [np.pi/4, np.pi/6, -np.pi/3]
+T_ee = forward_kinematics(joint_angles, dh_params)
+print("EE 위치:", T_ee[:3, 3])
+```
+
+순기구학은 계산이 단순하고 유일한 해를 가집니다. 로봇 제어에서 현재 관절 각도로 EE 위치를 실시간 계산하는 데 사용됩니다.
+
+## 역기구학 (Inverse Kinematics)
+
+역기구학은 순기구학의 역문제입니다. 목표 EE 자세 T_desired가 주어졌을 때 q를 구합니다.
+
+### 해석적 방법 (Analytical IK)
+
+기하학적 관계와 삼각함수를 이용해 **닫힌 형태(closed-form)** 의 해를 직접 구합니다. 6자유도 이하의 특정 로봇 구조(구형 손목 등)에 대해 가능합니다.
+
+장점: 빠른 계산 속도, 정확한 해
+단점: 로봇 구조에 따라 다르며, 범용 적용이 어렵습니다.
+
+산업용 로봇(예: Puma 560, KUKA KR6)은 해석적 IK가 가능한 구조로 설계되어 실시간 제어가 가능합니다.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              역기구학의 여러 해 (2D 예시)                       │
+│                                                              │
+│  목표 위치 P ●                                               │
+│                                                              │
+│  해 1:    /\          관절1이 펴진 구성                        │
+│          /  \                                                │
+│         /    ● P                                             │
+│                                                              │
+│  해 2:   ─────●         관절1이 굽힌 구성                     │
+│              |                                               │
+│              ● P                                             │
+│                                                              │
+│  동일한 EE 위치에 도달하는 관절 각도 조합이 여럿               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 수치적 방법 (Numerical IK)
+
+반복적 최적화로 관절 각도를 점진적으로 조정하는 방법입니다. 가장 흔히 사용되는 것이 **Jacobian 기반 방법**입니다.
+
+## Jacobian 행렬
+
+**Jacobian(야코비안)** 은 관절 속도와 EE 속도 사이의 관계를 표현하는 행렬입니다.
+
+```
+v_ee = J(q) * q_dot
+
+v_ee: EE 속도 벡터 (6차원: 선속도 3 + 각속도 3)
+J(q): 6×n 야코비안 행렬 (n = 관절 수)
+q_dot: 관절 속도 벡터 (n차원)
+```
+
+야코비안의 각 열은 해당 관절이 단위 속도로 움직일 때 EE에 주는 선속도와 각속도를 나타냅니다.
+
+역기구학에서 야코비안을 이용한 반복적 해법:
+
+```
+Δq = J^+ * Δx_ee    (의사역행렬 Jacobian 기반)
+
+여기서:
+  Δx_ee: 현재 EE 위치와 목표 위치의 오차
+  J^+: J의 의사역행렬 (Moore-Penrose pseudoinverse)
+  Δq: 적용할 관절 각도 변화량
+```
+
+이를 반복하면서 현재 위치가 목표 위치로 수렴합니다.
+
+```python
+def numerical_ik(target_pose, initial_q, dh_params,
+                 max_iter=1000, tolerance=1e-4):
+    """수치 IK: Jacobian 기반 반복 수렴"""
+    q = initial_q.copy()
+
+    for _ in range(max_iter):
+        T_current = forward_kinematics(q, dh_params)
+        error = compute_pose_error(T_current, target_pose)
+
+        if np.linalg.norm(error) < tolerance:
+            break   # 수렴
+
+        J = compute_jacobian(q, dh_params)
+        J_pinv = np.linalg.pinv(J)         # 의사역행렬
+        delta_q = J_pinv @ error
+        q = q + 0.1 * delta_q              # 스텝 크기 0.1
+
+    return q
+```
+
+실제 라이브러리(TracIK, IKFast, KDL)는 이보다 훨씬 정교한 수렴 알고리즘과 관절 제한 처리를 포함합니다.
+
+## 특이점 (Singularity)
+
+**특이점(singularity)** 은 로봇이 특정 자세에서 야코비안 행렬의 계수(rank)가 줄어드는 상황입니다. 직관적으로 말하면, 일부 방향으로 EE를 움직일 수 없게 됩니다.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│              특이점의 유형                                     │
+│                                                              │
+│  1. 경계 특이점 (Boundary Singularity)                        │
+│     로봇이 완전히 펼쳐지거나 완전히 접힌 구성                  │
+│     (작업 공간 경계 근처)                                      │
+│                                                              │
+│  2. 내부 특이점 (Interior Singularity)                        │
+│     두 관절 축이 정렬되는 구성                                 │
+│     (작업 공간 내부에서 발생)                                   │
+│                                                              │
+│  3. 손목 특이점 (Wrist Singularity)                           │
+│     손목 관절 축이 정렬되는 구성                               │
+│     (특히 구형 손목(spherical wrist)에서 빈번)                 │
+│                                                              │
+│  특이점에서: J가 rank deficient → J^+ 계산 불안정             │
+│  결과: 매우 큰 관절 속도, 제어 실패                           │
+└──────────────────────────────────────────────────────────────┘
+```
+
+특이점 처리 방법:
+- **특이점 회피 경로 계획**: 특이점 근처를 지나지 않는 경로를 계획
+- **댐핑 최소자승법(Damped Least Squares)**: J^+ 계산 시 작은 댐핑 계수 추가로 수치 안정성 확보
+- **여분 자유도 활용**: 7자유도 로봇에서 여분 자유도로 특이점 회피
+
+## 현대 로보틱스에서의 기구학
+
+최신 학습 기반 로보틱스에서도 기구학은 여전히 중요합니다. 딥러닝 정책이 관절 각도나 관절 속도를 직접 출력하더라도, 이 값들이 EE에 어떤 운동을 만드는지 이해하려면 기구학 지식이 필요합니다.
+
+Isaac Sim에서는 로봇의 URDF(Unified Robot Description Format) 파일을 임포트하면 순기구학이 자동으로 계산됩니다. 역기구학은 Isaac Sim의 내장 IK 솔버 또는 외부 솔버(LULA, cuRobo 등)를 사용합니다.
+
+cuRobo는 NVIDIA가 개발한 GPU 가속 IK/운동 계획 라이브러리로, 수천 개의 IK 쿼리를 병렬로 처리할 수 있어 Isaac Lab에서의 대규모 훈련에 적합합니다.
+
+## 핵심 요약
+
+- **DH 파라미터**: 4개 값(θ, d, a, α)으로 각 링크-관절을 표준화 기술
+- **순기구학(FK)**: 관절 각도 → EE 자세, DH 행렬의 곱, 유일한 해
+- **역기구학(IK)**: EE 자세 → 관절 각도, 여러 해 가능, 해 없을 수도
+  - 해석적: 빠름, 구조 의존적
+  - 수치적: 느림, 범용, Jacobian 기반
+- **Jacobian**: 관절 속도 → EE 속도의 선형 매핑, 수치 IK의 핵심
+- **특이점**: Jacobian rank 감소 → 일부 방향 운동 불가, 회피 필요
+
+다음 챕터에서는 이 기구학과 동역학을 실제로 계산하는 **물리 엔진**의 내부 작동 원리를 살펴봅니다.

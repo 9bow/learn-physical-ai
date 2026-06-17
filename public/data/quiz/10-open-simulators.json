@@ -1,0 +1,146 @@
+[
+  {
+    "id": "q1",
+    "question": "MuJoCo(Multi-Joint dynamics with Contact)의 주요 강점은?",
+    "options": [
+      "접촉 역학 정밀도와 힘·토크 제어 연구에 특화된 물리 시뮬레이션",
+      "ROS 2와의 네이티브 통합",
+      "GPU 가속 병렬 시뮬레이션",
+      "대규모 씬과 시각적 렌더링 품질"
+    ],
+    "answer": 0,
+    "explanation": "MuJoCo는 접촉 및 힘 제어의 정밀도로 유명하며, 로봇 제어 연구의 사실상 표준 시뮬레이터로 많이 사용됩니다."
+  },
+  {
+    "id": "q2",
+    "question": "MJX(MuJoCo XLA)의 핵심 특징은?",
+    "options": [
+      "MuJoCo를 OpenGL로 렌더링하는 확장",
+      "MuJoCo를 JAX/XLA 기반으로 GPU/TPU에서 병렬 실행 가능하게 하는 백엔드",
+      "MuJoCo 씬을 USD 포맷으로 내보내는 도구",
+      "MuJoCo 모델을 ROS 2에 연결하는 브리지"
+    ],
+    "answer": 1,
+    "explanation": "MJX는 MuJoCo의 JAX 기반 구현으로, GPU/TPU에서 수천 개의 시뮬레이션 인스턴스를 병렬로 실행하여 대규모 RL 실험을 가능하게 합니다."
+  },
+  {
+    "id": "q3",
+    "question": "Genesis 시뮬레이터의 특징으로 옳은 것은?",
+    "options": [
+      "LiDAR 데이터 생성 전용 도구",
+      "NVIDIA 독점 상용 물리 엔진",
+      "범용 물리 시뮬레이션(강체, 유체, 변형체)과 GPU 병렬화를 결합한 오픈소스 시뮬레이터",
+      "ROS 2 전용 로봇 시뮬레이터"
+    ],
+    "answer": 2,
+    "explanation": "Genesis는 강체·유체·변형체를 통합 지원하고 GPU 병렬화로 빠른 학습이 가능한 오픈소스 범용 물리 시뮬레이터로, 빠른 성장 중인 플랫폼입니다."
+  },
+  {
+    "id": "q4",
+    "question": "SAPIEN과 ManiSkill이 로봇 학습에서 제공하는 것은?",
+    "options": [
+      "드론 비행 시뮬레이션 환경",
+      "자연어 명령 인터페이스만",
+      "4족보행 전용 지형 생성 도구",
+      "조작(Manipulation) 과제 중심의 벤치마크 환경과 다양한 물체·씬 에셋"
+    ],
+    "answer": 3,
+    "explanation": "SAPIEN은 물리 기반 로봇 조작 시뮬레이터이고, ManiSkill은 그 위에 구축된 표준화된 매니퓰레이션 벤치마크로 다양한 물체·씬에서 파지·재배치 등을 평가합니다."
+  },
+  {
+    "id": "q5",
+    "question": "robosuite의 주요 용도는?",
+    "options": [
+      "로봇 팔 조작 과제를 위한 MuJoCo 기반 표준화된 벤치마크 환경",
+      "보행 로봇 전용 지형 생성",
+      "컴퓨터 비전 데이터셋 생성",
+      "자율주행 차량 시뮬레이션"
+    ],
+    "answer": 0,
+    "explanation": "robosuite는 MuJoCo 기반의 로봇 팔 조작 환경 모음으로, 리프트(Lift), 쌓기(Stack), NutAssembly 등 표준화된 과제를 제공하여 연구 재현성을 높입니다."
+  },
+  {
+    "id": "q6",
+    "question": "RoboMimic이 제공하는 것은?",
+    "options": [
+      "MuJoCo 대체 물리 엔진",
+      "robosuite 환경과 호환되는 표준 모방 학습 알고리즘 및 데이터셋 벤치마크",
+      "ROS 2 패키지 관리자",
+      "Isaac Sim의 Python API 래퍼"
+    ],
+    "answer": 1,
+    "explanation": "RoboMimic은 robosuite 기반 환경에서 다양한 모방 학습 알고리즘(BC, BC-RNN, IQL, CQL, HBC, IRIS 등)과 품질별 시연 데이터셋을 비교 평가할 수 있는 오픈소스 벤치마크입니다."
+  },
+  {
+    "id": "q7",
+    "question": "Gazebo(현 Ignition Gazebo / Gazebo Sim)와 ROS 2의 관계는?",
+    "options": [
+      "Gazebo는 NVIDIA 전용 시뮬레이터다",
+      "Gazebo가 ROS 2의 핵심 물리 엔진으로 내장되어 있다",
+      "Gazebo는 ROS 2와 별개의 독립 시뮬레이터이지만 강력한 통합을 제공하는 로봇공학 표준 시뮬레이터",
+      "ROS 2를 설치하면 Gazebo가 자동으로 포함된다"
+    ],
+    "answer": 2,
+    "explanation": "Gazebo(현 Gazebo Sim)는 Open Robotics가 개발한 독립 오픈소스 시뮬레이터로, ROS 2와 공식 브리지 패키지를 통해 긴밀하게 통합되어 ROS 2 로봇 개발의 표준 시뮬레이션 환경입니다."
+  },
+  {
+    "id": "q8",
+    "question": "로봇 학습 시뮬레이터를 선택할 때 'GPU 병렬 시뮬레이션 지원' 여부가 중요한 이유는?",
+    "options": [
+      "실제 로봇과 통신하기 위해",
+      "합성 이미지 레이블을 자동 생성하기 위해",
+      "렌더링 품질을 높이기 위해",
+      "강화학습에서 대규모 샘플을 빠르게 수집하여 학습 속도를 크게 향상시키기 위해"
+    ],
+    "answer": 3,
+    "explanation": "RL은 수백만~수십억 개의 샘플이 필요하므로, GPU 병렬 시뮬레이션으로 수천 개의 환경을 동시 실행하면 학습 시간을 CPU 대비 수십~수백 배 단축할 수 있습니다."
+  },
+  {
+    "id": "q9",
+    "question": "접촉 정밀도(Contact Accuracy)가 특히 중요한 로봇 학습 과제는?",
+    "options": [
+      "세밀한 파지(Dexterous Grasping)와 조립 작업",
+      "카메라 기반 객체 인식",
+      "음성 명령 이해",
+      "GPS 기반 야외 경로 추종"
+    ],
+    "answer": 0,
+    "explanation": "세밀한 파지·조립 과제는 손가락 접촉력·마찰의 정밀 모델링에 의존하므로, 접촉 정밀도가 낮은 시뮬레이터에서 학습된 정책은 실물 전이가 어렵습니다."
+  },
+  {
+    "id": "q10",
+    "question": "Brax 물리 시뮬레이터의 특징은?",
+    "options": [
+      "NVIDIA GPU 전용 폐쇄형 시뮬레이터",
+      "Google Brain이 개발한 JAX 기반 완전 차별화 가능(Differentiable) GPU 물리 시뮬레이터",
+      "ROS 2 네이티브 통합 전용 시뮬레이터",
+      "점유 격자(Occupancy Grid) 기반 2D 시뮬레이터"
+    ],
+    "answer": 1,
+    "explanation": "Brax는 Google Brain(현 Google DeepMind)이 JAX로 구현한 GPU 가속 물리 시뮬레이터로, 미분 가능성(Differentiability)을 제공하고 TPU에서도 실행 가능하며 대규모 RL 연구에 사용됩니다."
+  },
+  {
+    "id": "q11",
+    "question": "시뮬레이터 선택 시 '렌더링 현실감'이 중요한 이유는?",
+    "options": [
+      "ROS 2 토픽 지연을 줄이기 위해",
+      "물리 시뮬레이션 정확도와 직접 연관되기 때문에",
+      "시각 기반 정책(Vision-based Policy)의 Sim-to-Real 시각적 간극을 줄이기 위해",
+      "GPU 병렬 처리 효율과 비례하기 때문에"
+    ],
+    "answer": 2,
+    "explanation": "카메라 이미지를 입력으로 사용하는 시각 기반 정책은 시뮬레이션 이미지가 실제 이미지와 유사할수록 Sim-to-Real 시각적 간극이 줄어 전이 성능이 향상됩니다."
+  },
+  {
+    "id": "q12",
+    "question": "NVIDIA Warp가 물리 시뮬레이션 및 로봇 학습에서 사용되는 주된 역할은?",
+    "options": [
+      "Isaac Sim의 UI 렌더링 엔진",
+      "로봇 URDF 파일 생성 도구",
+      "ROS 2 메시지 압축 도구",
+      "GPU에서 실행되는 고성능 시뮬레이션과 미분 가능 계산을 위한 Python/CUDA 프레임워크"
+    ],
+    "answer": 3,
+    "explanation": "NVIDIA Warp는 GPU에서 물리 시뮬레이션, 포인트 클라우드 처리, 미분 가능 계산 등을 Python으로 작성하고 CUDA로 컴파일하는 고성능 프레임워크입니다."
+  }
+]

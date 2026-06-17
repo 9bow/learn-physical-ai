@@ -1,0 +1,248 @@
+---
+title: "인식 파이프라인"
+description: 카메라부터 검출·세그먼테이션·포즈 추정까지 Isaac ROS 가속 인식 파이프라인의 구조를 이해하고, 합성 데이터로 학습한 모델의 배포 흐름을 파악합니다.
+sidebar:
+  order: 5
+learning_objectives:
+  - "카메라 → 검출 → 세그먼테이션 → 포즈 추정으로 이어지는 인식 파이프라인 구조를 설명할 수 있다"
+  - "Isaac ROS가 인식 파이프라인 각 단계를 가속하는 방법을 파악할 수 있다"
+  - "Isaac Sim 합성 데이터로 학습한 모델을 Isaac ROS 파이프라인에 배포하는 흐름을 설명할 수 있다"
+prerequisites:
+  - "11-4-isaac-sim-ros-bridge"
+estimated_minutes: 35
+references:
+  - title: "Isaac ROS Perception Documentation"
+    url: "https://nvidia-isaac-ros.github.io/repositories_and_packages/isaac_ros_object_detection/index.html"
+    accessed: "2026-06-17"
+  - title: "Isaac ROS Pose Estimation"
+    url: "https://nvidia-isaac-ros.github.io/repositories_and_packages/isaac_ros_pose_estimation/index.html"
+    accessed: "2026-06-17"
+  - title: "Isaac ROS Image Segmentation"
+    url: "https://nvidia-isaac-ros.github.io/repositories_and_packages/isaac_ros_image_segmentation/index.html"
+    accessed: "2026-06-17"
+---
+
+import Quiz from '../../../components/learning/Quiz.tsx';
+
+## 로봇 인식 파이프라인이란
+
+로봇이 환경을 이해하고 물체를 조작하려면, 센서 데이터로부터 의미 있는 정보를 추출하는 **인식(perception)** 과정이 필수입니다. 인식 파이프라인은 원시 센서 데이터(픽셀, 포인트)를 "어떤 물체가 어디에 어떤 자세로 있는가"라는 구조화된 정보로 변환합니다.
+
+현대 로봇 인식 파이프라인은 여러 DNN 모델이 순차적으로 연결된 구조입니다. 각 단계가 이전 단계의 출력을 입력으로 받아 더 높은 수준의 정보를 생성합니다.
+
+```text
+완전한 인식 파이프라인:
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                                                                      │
+│  [카메라 / RGB-D / 스테레오]                                         │
+│         │                                                            │
+│         ▼                                                            │
+│  ┌─────────────────────┐                                             │
+│  │  이미지 전처리       │  리사이즈, 정규화, 디스토션 보정           │
+│  │  (Isaac ROS Image   │  → sensor_msgs/Image                       │
+│  │   Processing)       │                                             │
+│  └──────────┬──────────┘                                             │
+│             │                                                        │
+│     ┌───────┴────────┐                                              │
+│     ▼                ▼                                              │
+│  ┌──────────┐  ┌──────────────┐                                     │
+│  │ 객체 검출 │  │ 깊이 추정    │  병렬 처리 가능                     │
+│  │(Detect-  │  │(Stereo Depth │                                     │
+│  │ Net/YOLO)│  │ / Mono Depth)│                                     │
+│  └────┬─────┘  └──────┬───────┘                                     │
+│       │               │                                              │
+│       ▼               ▼                                              │
+│  ┌──────────────────────────────┐                                    │
+│  │  인스턴스 세그먼테이션        │  픽셀 단위 마스크 생성             │
+│  │  (Isaac ROS Segmentation)    │                                    │
+│  └──────────────────┬───────────┘                                    │
+│                     │                                                │
+│                     ▼                                                │
+│  ┌──────────────────────────────┐                                    │
+│  │  6-DoF 포즈 추정             │  3D 위치 + 방향 (x,y,z,roll,      │
+│  │  (FoundationPose / DOPE /    │  pitch,yaw)                       │
+│  │   CenterPose)               │                                    │
+│  └──────────────────┬───────────┘                                    │
+│                     │                                                │
+│                     ▼                                                │
+│  MoveIt 2 파지 계획 / Nav2 장애물 회피                               │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## 단계 1: 이미지 전처리
+
+인식 파이프라인의 첫 단계는 원시 카메라 이미지를 DNN 추론에 적합한 형태로 변환하는 것입니다.
+
+**Isaac ROS Image Proc** 패키지는 다음 기능을 GPU에서 가속 실행합니다.
+- **디베이어링(Debayering)**: RAW 카메라 출력을 RGB로 변환
+- **렌즈 왜곡 보정(Rectification)**: 카메라 캘리브레이션 파라미터 적용
+- **리사이즈**: DNN 입력 크기로 조정
+- **색공간 변환**: BGR↔RGB, 정규화
+
+```bash
+# Isaac ROS Image Proc 실행 예시
+ros2 launch isaac_ros_image_proc isaac_ros_image_flip.launch.py \
+  flip_mode:=0
+
+# 스테레오 카메라 렉티피케이션
+ros2 launch isaac_ros_stereo_image_proc isaac_ros_stereo_image_pipeline.launch.py
+```
+
+## 단계 2: 객체 검출
+
+**객체 검출(Object Detection)** 은 이미지에서 물체의 위치(바운딩 박스)와 클래스를 식별합니다. Isaac ROS는 NVIDIA DetectNet, RT-DETR, YOLO 계열 모델을 TensorRT로 최적화하여 실행합니다.
+
+```bash
+# Isaac ROS Object Detection 런치 (실제 설정은 공식 문서 및 모델 파일 준비 필요)
+ros2 launch isaac_ros_object_detection isaac_ros_detectnet.launch.py \
+  engine_file_path:=/path/to/detectnet.engine
+
+# 검출 결과 토픽 확인
+ros2 topic echo /detectnet/detections
+# 출력: Detection2DArray (바운딩 박스, 클래스, 신뢰도)
+```
+
+검출 모델은 NVIDIA TAO Toolkit으로 파인튜닝하거나, Isaac Sim의 합성 데이터셋으로 처음부터 학습할 수 있습니다.
+
+## 단계 3: 세그먼테이션
+
+**의미론적 세그먼테이션(Semantic Segmentation)** 은 각 픽셀에 클래스 레이블을 부여합니다. **인스턴스 세그먼테이션(Instance Segmentation)** 은 같은 클래스의 개별 물체를 구분합니다.
+
+```text
+세그먼테이션 출력 예시:
+
+원본 이미지              세그먼테이션 마스크
+┌──────────────┐        ┌──────────────┐
+│ 책상         │        │ ██████ 책상  │  (초록)
+│  [컵] [볼펜] │   →    │  [컵] [볼펜]│  (빨강/파랑)
+│ ████ 바닥    │        │ ████ 바닥    │  (회색)
+└──────────────┘        └──────────────┘
+```
+
+Isaac ROS Image Segmentation은 U-Net 계열 모델을 TensorRT로 실행합니다. 합성 데이터로 학습된 세그먼테이션 모델은 실제 환경에서도 조명 변화에 강인한 특성을 보입니다.
+
+## 단계 4: 6-DoF 포즈 추정
+
+**포즈 추정(Pose Estimation)** 은 인식 파이프라인의 최종 단계로, 물체의 3D 위치와 방향(6자유도: x, y, z, roll, pitch, yaw)을 추정합니다. 로봇 팔이 물체를 집으려면 정확한 6-DoF 포즈가 필수입니다.
+
+Isaac ROS에서 지원하는 포즈 추정 방법:
+
+| 방법 | 특징 | 적합한 상황 |
+|------|------|-------------|
+| FoundationPose | CAD 모델 기반, 고정밀 | 산업용 조작 |
+| DOPE | DNN 기반, 학습 필요 | 특정 물체 집합 |
+| CenterPose | 카테고리 수준 포즈 | 다양한 물체 유형 |
+
+```bash
+# FoundationPose 런치 예시 (CAD 메시 파일 및 참조 이미지 필요)
+ros2 launch isaac_ros_foundationpose isaac_ros_foundationpose.launch.py \
+  mesh_file_path:=/path/to/object.obj \
+  texture_path:=/path/to/texture.png
+
+# 포즈 추정 결과 확인
+ros2 topic echo /foundationpose/pose_estimation/output
+# 출력: PoseArray (object frame의 6-DoF 포즈)
+```
+
+## NITROS 가속 파이프라인 구성
+
+인식 파이프라인의 각 단계가 모두 Isaac ROS GEM으로 구성되면, NITROS zero-copy가 전체 파이프라인에 적용됩니다.
+
+```text
+NITROS 가속 전체 파이프라인:
+
+카메라 드라이버 (GPU 메모리 할당)
+    │ zero-copy
+    ▼
+Image Proc GEM (GPU 전처리)
+    │ zero-copy
+    ▼
+Object Detection GEM (TensorRT 추론)
+    │ zero-copy
+    ▼
+Segmentation GEM (TensorRT 추론)
+    │ zero-copy
+    ▼
+Pose Estimation GEM (TensorRT 추론)
+    │
+    ▼
+MoveIt 2 / 애플리케이션 노드 (CPU 처리)
+
+GPU 메모리 복사 발생 지점: 마지막 단계 한 번
+```
+
+## 합성 데이터 모델의 실제 배포
+
+Isaac Sim에서 합성 데이터(synthetic data)로 학습한 모델을 Isaac ROS 파이프라인에 배포하는 흐름입니다.
+
+```text
+합성 데이터 → 학습 → Isaac ROS 배포 파이프라인:
+
+1. Isaac Sim Replicator
+   - 도메인 랜덤화 적용(조명, 텍스처, 물체 위치)
+   - 자동 어노테이션(바운딩 박스, 세그먼테이션 마스크, 포즈 레이블)
+   - 수천~수만 장 이미지 자동 생성
+        │
+        ▼
+2. NVIDIA TAO Toolkit / PyTorch 학습
+   - 합성 데이터로 DNN 모델 학습
+   - 검증 세트에서 정밀도/재현율 확인
+        │
+        ▼
+3. TensorRT 변환 및 최적화
+   - ONNX export → TensorRT engine 변환
+   - Jetson 타겟 플랫폼에 맞춘 INT8/FP16 양자화
+        │
+        ▼
+4. Isaac ROS GEM 배포
+   - TensorRT engine 파일을 Isaac ROS 런치 파라미터로 지정
+   - 실시간 토픽 스트림에서 추론 실행
+        │
+        ▼
+5. 성능 평가
+   - 실제 환경 이미지로 추론 결과 검토
+   - 실패 케이스 분석 → 합성 데이터 보강 → 재학습
+```
+
+## 파이프라인 디버깅
+
+인식 파이프라인 디버깅에는 시각화가 필수입니다.
+
+```bash
+# RViz2로 파이프라인 시각화
+ros2 run rviz2 rviz2
+
+# 이미지 토픽 직접 확인 (rqt_image_view)
+ros2 run rqt_image_view rqt_image_view
+
+# 파이프라인 병목 지점 확인 (각 단계별 주파수)
+ros2 topic hz /camera/image_raw
+ros2 topic hz /detectnet/detections
+ros2 topic hz /foundationpose/pose_estimation/output
+
+# 지연(latency) 측정
+ros2 run rqt_graph rqt_graph
+```
+
+## 파이프라인 성능 기준점
+
+인식 파이프라인은 로봇 제어 루프의 응답 속도를 결정합니다. 일반적으로 다음 기준을 목표로 합니다.
+
+```text
+┌────────────────────────────────────┬────────────────────────────────┐
+│ 파이프라인 단계                    │ 목표 처리 속도 (참고)           │
+├────────────────────────────────────┼────────────────────────────────┤
+│ 이미지 전처리                      │ 60fps 이상                     │
+│ 객체 검출 (1080p, Jetson Orin)     │ 30fps 이상                     │
+│ 세그먼테이션                       │ 15~30fps                       │
+│ 6-DoF 포즈 추정                    │ 15fps 이상 (조작 용도)         │
+│ End-to-End 파이프라인 지연         │ 100ms 이하 권장                │
+└────────────────────────────────────┴────────────────────────────────┘
+```
+
+이 목표치는 플랫폼(Jetson Orin vs 데이터센터 GPU), 이미지 해상도, 모델 크기에 따라 크게 달라집니다. 실제 숫자는 각자 환경에서 벤치마크를 통해 확인해야 합니다.
+
+이것으로 ROS 2 + Isaac ROS 섹션을 마칩니다. 다음 섹션에서는 지금까지 배운 모든 개념을 실제 프로젝트에서 통합하는 실습을 진행합니다.
+
+<Quiz section="11-ros2-isaac-ros" client:load />

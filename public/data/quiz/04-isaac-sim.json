@@ -1,0 +1,146 @@
+[
+  {
+    "id": "q1",
+    "question": "NVIDIA Isaac Sim을 실행하기 위한 필수 GPU 요구사항은?",
+    "options": [
+      "RTX 시리즈 GPU (레이 트레이싱 지원)",
+      "어떤 GPU든 CUDA 6.0 이상이면 가능",
+      "AMD Radeon GPU",
+      "GTX 1080 이상의 CUDA 지원 GPU"
+    ],
+    "answer": 0,
+    "explanation": "Isaac Sim은 물리 기반 렌더링과 RTX 가속을 활용하므로 NVIDIA RTX 시리즈 GPU(레이 트레이싱 코어 포함)가 필수 요구사항입니다."
+  },
+  {
+    "id": "q2",
+    "question": "Isaac Sim에서 URDF(Unified Robot Description Format) 파일을 임포트하는 주된 목적은?",
+    "options": [
+      "씬의 조명 설정을 불러오기 위해",
+      "로봇의 링크·관절·외형 정보를 시뮬레이터에 로드하기 위해",
+      "강화학습 보상 함수를 정의하기 위해",
+      "카메라 캘리브레이션 데이터를 임포트하기 위해"
+    ],
+    "answer": 1,
+    "explanation": "URDF는 ROS 생태계에서 사용되는 로봇 기술 형식으로, 링크·관절·충돌 모양·외형 메시 정보를 포함하며 Isaac Sim에서 로봇을 불러오는 데 사용됩니다."
+  },
+  {
+    "id": "q3",
+    "question": "Isaac Sim에서 MJCF(MuJoCo XML Format) 파일 임포트를 지원하는 이유는?",
+    "options": [
+      "Isaac Sim의 기본 파일 포맷이 MJCF이기 때문에",
+      "MJCF가 USD보다 렌더링 성능이 좋기 때문에",
+      "MuJoCo로 설계된 로봇·환경 에셋을 Isaac Sim에서 재사용할 수 있게 하기 위해",
+      "MJCF는 물리 시뮬레이션 없이 외형만 표현하기 때문에"
+    ],
+    "answer": 2,
+    "explanation": "MuJoCo 생태계에서 개발된 다양한 로봇·환경 에셋을 Isaac Sim에서 활용할 수 있도록 MJCF 임포터를 제공합니다."
+  },
+  {
+    "id": "q4",
+    "question": "Isaac Sim의 Replicator가 제공하는 주요 기능은?",
+    "options": [
+      "학습된 정책을 실제 로봇에 배포한다",
+      "ROS 2 토픽을 녹화하고 재생한다",
+      "실제 로봇의 토크 센서 데이터를 복제한다",
+      "합성 데이터(Synthetic Data) 생성 및 Domain Randomization을 자동화한다"
+    ],
+    "answer": 3,
+    "explanation": "Isaac Replicator는 합성 데이터 생성 파이프라인으로, 조명·텍스처·물체 위치 등을 무작위화(Domain Randomization)하여 다양한 학습 데이터를 자동 생성합니다."
+  },
+  {
+    "id": "q5",
+    "question": "Isaac Sim Python API에서 시뮬레이션 한 스텝을 진행하는 일반적인 메서드는?",
+    "options": [
+      "`world.step(render=True)`",
+      "`sim.advance()`",
+      "`env.tick()`",
+      "`world.reset()`"
+    ],
+    "answer": 0,
+    "explanation": "Isaac Sim Python API에서 `world.step(render=True/False)`를 호출하여 물리 시뮬레이션 한 스텝을 진행하고 선택적으로 렌더링을 수행합니다."
+  },
+  {
+    "id": "q6",
+    "question": "Domain Randomization(도메인 무작위화)의 목적은?",
+    "options": [
+      "학습 에피소드마다 다른 에이전트 수를 설정하기 위해",
+      "시뮬레이션과 실제 환경 간 차이에 강건한 정책을 학습하기 위해",
+      "GPU 메모리 할당을 분산시키기 위해",
+      "ROS 2 토픽 이름을 동적으로 변경하기 위해"
+    ],
+    "answer": 1,
+    "explanation": "Domain Randomization은 시뮬레이션에서 재질·조명·마찰 계수·물체 외형 등을 무작위화하여 다양한 환경에 강건한 정책을 훈련시키고 Sim-to-Real 전이를 향상시킵니다."
+  },
+  {
+    "id": "q7",
+    "question": "Isaac Sim에서 물리 씬 설정 시 'Physics Scene'에 정의하는 주요 항목은?",
+    "options": [
+      "강화학습 에피소드 최대 길이",
+      "카메라 해상도와 프레임 레이트",
+      "중력 벡터, 시뮬레이션 타임스텝, 솔버 설정",
+      "로봇 관절의 PID 게인"
+    ],
+    "answer": 2,
+    "explanation": "Physics Scene에서는 중력 방향·크기, 물리 타임스텝, 솔버 종류(TGS/PGS) 등 씬 전체의 물리 환경을 설정합니다."
+  },
+  {
+    "id": "q8",
+    "question": "Isaac Sim에서 로봇 관절을 구동할 때 'Articulation(아티큘레이션)'을 사용하는 이유는?",
+    "options": [
+      "센서 데이터를 ROS 2로 전송하기 위해",
+      "합성 이미지의 레이블을 자동 생성하기 위해",
+      "메시 렌더링 품질을 향상시키기 위해",
+      "연결된 링크와 관절의 물리를 통합 계산하여 정확한 동역학을 시뮬레이션하기 위해"
+    ],
+    "answer": 3,
+    "explanation": "Articulation은 로봇의 관절-링크 체인을 하나의 통합된 물리 단위로 취급하여, 정확한 운동역학(Forward/Inverse Dynamics)을 효율적으로 계산합니다."
+  },
+  {
+    "id": "q9",
+    "question": "Isaac Sim에서 합성 데이터 생성 시 'Semantic Segmentation(의미론적 분할)' 주석을 활용하는 주된 용도는?",
+    "options": [
+      "객체별 픽셀 레이블을 생성하여 인식 모델 학습 데이터로 사용",
+      "카메라 외부 파라미터 보정",
+      "관절 토크 측정",
+      "물리 충돌 감지 최적화"
+    ],
+    "answer": 0,
+    "explanation": "Semantic Segmentation 주석은 이미지의 각 픽셀에 객체 클래스 레이블을 할당하여 객체 인식·분할 모델 훈련에 사용되는 지도 데이터를 자동 생성합니다."
+  },
+  {
+    "id": "q10",
+    "question": "Isaac Sim의 USD 기반 씬에서 로봇을 배치할 때 'Xform Prim'의 역할은?",
+    "options": [
+      "물리 충돌 형상을 정의한다",
+      "씬 내 위치·회전·스케일 변환을 담당하는 부모 노드 역할을 한다",
+      "카메라 렌더링 뷰를 설정한다",
+      "강화학습 보상을 계산하는 스크립트를 담는다"
+    ],
+    "answer": 1,
+    "explanation": "Xform(Transform) Prim은 USD 씬에서 자식 Prim에 적용될 위치·회전·스케일 변환을 저장하는 컨테이너 노드로, 계층적 씬 구성에 사용됩니다."
+  },
+  {
+    "id": "q11",
+    "question": "Isaac Sim에서 'Contact Sensor(접촉 센서)'를 사용하는 목적은?",
+    "options": [
+      "GPS 위치를 시뮬레이션하기 위해",
+      "이미지 깊이를 측정하기 위해",
+      "로봇 링크가 다른 물체와 접촉할 때 힘과 접촉 정보를 감지하기 위해",
+      "관절 각도를 읽기 위해"
+    ],
+    "answer": 2,
+    "explanation": "Contact Sensor는 지정된 로봇 링크에 작용하는 접촉력과 접촉 위치를 시뮬레이션에서 측정하며, 파지(Grasping)나 보행 발바닥 접촉 감지에 사용됩니다."
+  },
+  {
+    "id": "q12",
+    "question": "Isaac Sim에서 대규모 병렬 시뮬레이션을 위해 여러 환경 인스턴스를 씬에 배치할 때 권장하는 방법은?",
+    "options": [
+      "Docker 컨테이너를 환경마다 별도로 생성한다",
+      "ROS 2 네임스페이스로 환경을 분리한다",
+      "각 환경을 별도의 프로세스로 실행한다",
+      "USD Cloner(복제 도구)를 사용하여 환경을 격자로 복제한다"
+    ],
+    "answer": 3,
+    "explanation": "Isaac Sim/Lab은 USD Cloner API를 제공하여 단일 환경 정의를 격자 형태로 대량 복제하고 GPU에서 병렬 시뮬레이션을 효율적으로 실행할 수 있습니다."
+  }
+]

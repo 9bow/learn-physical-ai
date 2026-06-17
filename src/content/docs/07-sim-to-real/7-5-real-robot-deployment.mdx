@@ -1,0 +1,308 @@
+---
+title: "실제 로봇 배포 파이프라인"
+description: "시뮬레이션에서 학습한 정책을 실제 로봇에 배포하는 전체 파이프라인 — 모델 내보내기, 실시간 추론, 안전 설계, 검증 절차를 다룹니다."
+sidebar:
+  order: 5
+learning_objectives:
+  - "ONNX/TorchScript를 이용한 정책 내보내기 절차를 설명할 수 있다"
+  - "실시간 추론의 지연 요구사항과 최적화 방법을 이해할 수 있다"
+  - "안전 한계 설계의 원칙과 구체적 구현 방법을 설명할 수 있다"
+  - "Sim-to-Real 체크리스트를 활용하여 배포 준비 상태를 평가할 수 있다"
+prerequisites:
+  - "7-4-transfer-case-studies"
+estimated_minutes: 35
+references:
+  - title: "Isaac Lab - Deployment and Export Documentation"
+    url: "https://isaac-sim.github.io/IsaacLab/"
+    accessed: "2026-06-17"
+  - title: "ONNX: Open Neural Network Exchange"
+    url: "https://onnx.ai/"
+    accessed: "2026-06-17"
+---
+
+import Quiz from '../../../components/learning/Quiz.tsx';
+
+## 배포 파이프라인의 전체 구조
+
+시뮬레이션에서 학습이 완료된 정책은 바로 실제 로봇에 사용할 수 없습니다. 여러 단계의 변환, 검증, 안전 설계를 거쳐야 합니다. 이 챕터에서는 그 전체 과정을 단계별로 살펴봅니다.
+
+```text
+┌──────────────────────────────────────────────────────────────────┐
+│              Sim-to-Real 배포 파이프라인                         │
+│                                                                  │
+│  [학습 완료 모델]                                                │
+│        │                                                         │
+│        ▼                                                         │
+│  [모델 내보내기]   ONNX / TorchScript 변환                      │
+│        │           양자화 (선택적)                               │
+│        ▼                                                         │
+│  [벤치마킹]        추론 지연 측정                               │
+│        │           메모리 사용량 확인                            │
+│        ▼                                                         │
+│  [안전 레이어 설계] 관절 한계, 속도 제한, 비상 정지             │
+│        │                                                         │
+│        ▼                                                         │
+│  [시뮬 검증]       실제와 가까운 조건에서 재평가                │
+│        │                                                         │
+│        ▼                                                         │
+│  [단계적 실제 테스트] 핸들러 보조 → 제한 환경 → 일반 환경     │
+│        │                                                         │
+│        ▼                                                         │
+│  [배포 완료 + 모니터링]                                          │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+## 1단계: 정책 내보내기 (Model Export)
+
+PyTorch로 학습한 정책은 학습 프레임워크 의존성을 제거하고 추론 속도를 높이기 위해 **ONNX** 또는 **TorchScript** 포맷으로 내보냅니다.
+
+### TorchScript 내보내기
+
+```python
+# 개념 이해용 의사코드
+import torch
+
+# 학습된 정책 로드
+policy = ActorCriticPolicy.load("checkpoint.pt")
+policy.eval()
+
+# TorchScript로 추적(trace)
+# 실제 관측 형태와 동일한 더미 입력 사용
+dummy_obs = torch.zeros(1, obs_dim)
+scripted_policy = torch.jit.trace(policy.actor, dummy_obs)
+
+# 저장
+scripted_policy.save("policy_deploy.pt")
+```
+
+### ONNX 내보내기
+
+```python
+# 개념 이해용 의사코드
+import torch
+import onnx
+
+dummy_obs = torch.zeros(1, obs_dim)
+
+torch.onnx.export(
+    policy.actor,
+    dummy_obs,
+    "policy_deploy.onnx",
+    input_names=["observation"],
+    output_names=["action"],
+    dynamic_axes={"observation": {0: "batch_size"}},
+    opset_version=17,
+)
+
+# ONNX 모델 검증
+model = onnx.load("policy_deploy.onnx")
+onnx.checker.check_model(model)
+```
+
+**ONNX vs TorchScript 선택 기준:**
+
+| 항목 | TorchScript | ONNX |
+|------|------------|------|
+| 호환성 | PyTorch 런타임 필요 | 다양한 런타임 (ONNX Runtime, TensorRT 등) |
+| 최적화 | 제한적 | TensorRT 등으로 추가 최적화 가능 |
+| 디버깅 | 용이 | 도구 필요 |
+| 임베디드 배포 | 어려움 | 비교적 용이 |
+
+로봇 컴퓨터에 NVIDIA GPU가 있다면 TensorRT 변환으로 추론 속도를 더 높일 수 있습니다.
+
+### 양자화 (Quantization)
+
+정책 네트워크의 가중치를 float32에서 int8 또는 float16으로 줄이면 추론 속도와 메모리 사용량이 개선됩니다. 단, 양자화 후 정책 성능이 유지되는지 반드시 검증해야 합니다. 작은 성능 저하도 실제 로봇에서는 불안정성으로 나타날 수 있습니다.
+
+## 2단계: 실시간 추론 (Real-Time Inference)
+
+### 제어 루프 주파수 요구사항
+
+로봇 제어 루프는 일반적으로 50~500Hz에서 동작합니다. 정책 추론이 이 주기 안에 완료되어야 합니다.
+
+```text
+제어 주파수별 허용 추론 시간:
+
+  500Hz → 최대 2ms per step
+  200Hz → 최대 5ms per step
+  100Hz → 최대 10ms per step
+   50Hz → 최대 20ms per step
+```
+
+보행 제어는 보통 50~200Hz, 정밀 조작은 200~500Hz를 요구합니다. GPU 추론의 지연은 예측 불가능한 스파이크(jitter)가 있으므로, 평균이 아닌 최악 케이스(worst-case latency)를 기준으로 삼아야 합니다.
+
+### 실시간 추론 구현 패턴
+
+```python
+# 개념 이해용 의사코드 - 로봇 제어 루프
+
+import onnxruntime as ort
+import numpy as np
+import time
+
+# 세션 초기화 (한 번만)
+session = ort.InferenceSession(
+    "policy_deploy.onnx",
+    providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+)
+
+def control_loop(robot_interface, frequency_hz=100):
+    dt = 1.0 / frequency_hz
+    
+    while True:
+        t_start = time.perf_counter()
+        
+        # 관측 수집
+        obs = robot_interface.get_observation()
+        obs_array = np.array(obs, dtype=np.float32)[np.newaxis, :]
+        
+        # 정책 추론
+        action = session.run(
+            ["action"],
+            {"observation": obs_array}
+        )[0][0]
+        
+        # 안전 클리핑 (다음 섹션에서 설명)
+        action = apply_safety_limits(action)
+        
+        # 명령 전송
+        robot_interface.send_action(action)
+        
+        # 루프 타이밍 유지
+        elapsed = time.perf_counter() - t_start
+        sleep_time = dt - elapsed
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+        else:
+            # 루프가 지연되면 경고
+            print(f"Control loop overrun: {elapsed*1000:.1f}ms")
+```
+
+## 3단계: 안전 한계 설계 (Safety Limits)
+
+실제 로봇 배포에서 안전 설계는 선택이 아닌 필수입니다. 정책 오류, 예상치 못한 환경, 하드웨어 오류 등 다양한 상황에서 로봇과 주변 환경을 보호해야 합니다.
+
+### 관절 레벨 안전 한계
+
+```text
+안전 한계의 계층 구조:
+
+  하드웨어 레벨: 모터 드라이버 내장 전류/토크 제한 (최후 방어선)
+       │
+       ▼
+  소프트웨어 레벨: 관절 위치/속도/토크 소프트 한계
+       │
+       ▼
+  정책 레벨: 출력 액션 클리핑, 부드러운 명령 전환
+```
+
+```python
+# 개념 이해용 의사코드 - 안전 한계 적용
+
+def apply_safety_limits(raw_action, robot_state):
+    """
+    raw_action: 정책 출력 (관절 위치 또는 토크 명령)
+    robot_state: 현재 관절 상태
+    """
+    # 1. 관절 위치 한계 클리핑
+    clipped = np.clip(raw_action, JOINT_POS_MIN, JOINT_POS_MAX)
+    
+    # 2. 최대 명령 변화율 제한 (급격한 명령 방지)
+    delta = clipped - robot_state.joint_positions
+    delta = np.clip(delta, -MAX_DELTA_PER_STEP, MAX_DELTA_PER_STEP)
+    safe_action = robot_state.joint_positions + delta
+    
+    # 3. 속도 기반 추가 제한
+    if np.any(np.abs(robot_state.joint_velocities) > VELOCITY_THRESHOLD):
+        # 고속 상태에서는 더 보수적인 명령
+        safe_action = dampen_action(safe_action, robot_state)
+    
+    return safe_action
+```
+
+### 비상 정지 (Emergency Stop)
+
+다음 조건 중 하나라도 감지되면 즉시 안전 자세로 전환하거나 정지해야 합니다:
+
+- 관절 토크가 설계 한계를 초과하는 경우
+- IMU 기반 자세가 안전 범위를 벗어나는 경우 (예: 과도한 기울기)
+- 추론 지연이 임계값을 초과하는 경우
+- 하드웨어 통신 오류 발생
+- 운영자의 긴급 정지 명령
+
+### 안전 모드 전환
+
+단계적 안전 모드를 설계하면 모든 상황에서 즉각 정지보다 더 안전할 수 있습니다:
+
+```text
+정상 운영 → 경고 상태 → 감속 상태 → 안전 자세 정지 → 긴급 정지
+```
+
+## 4단계: 실기 검증 절차
+
+### 단계적 테스트 절차
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│           단계적 실제 로봇 테스트 프로토콜                   │
+├──────────────────────────────────────────────────────────────┤
+│ Phase 1: 정적 테스트                                         │
+│   - 로봇 고정(하네스) 상태에서 정책 실행                     │
+│   - 관절 명령이 안전 범위 내인지 확인                        │
+│   - 관측값이 기대 범위인지 확인                              │
+├──────────────────────────────────────────────────────────────┤
+│ Phase 2: 제한 동작 테스트                                    │
+│   - 핸들러가 지원하는 상태에서 동작 실행                     │
+│   - 저속/단순 동작부터 시작                                  │
+│   - 비상 정지 기능 검증                                      │
+├──────────────────────────────────────────────────────────────┤
+│ Phase 3: 자유 동작 테스트                                    │
+│   - 안전 구역(소프트 바닥, 장애물 없음)에서 자유 동작        │
+│   - 다양한 지면 조건 점진적 도입                             │
+│   - 성능 로깅 및 분석                                        │
+├──────────────────────────────────────────────────────────────┤
+│ Phase 4: 목표 환경 테스트                                    │
+│   - 실제 운영 환경에서 테스트                                │
+│   - 엣지 케이스(경사로, 장애물 등) 체계적 검증              │
+│   - 모니터링 시스템 운영                                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Sim-to-Real 배포 체크리스트
+
+배포 전 다음 항목을 체계적으로 점검합니다.
+
+### 모델 준비 체크리스트
+
+- [ ] 시뮬레이션 내 성능 지표가 목표치 이상인가?
+- [ ] ONNX/TorchScript 변환 후 출력이 원본과 동일한가?
+- [ ] 변환 모델의 추론 지연이 제어 루프 주기 내인가?
+- [ ] 관측(observation) 정규화 파라미터가 배포 코드에 포함되었는가?
+
+### 안전 설계 체크리스트
+
+- [ ] 모든 관절에 소프트/하드 위치 한계가 설정되었는가?
+- [ ] 속도 및 토크 제한이 설정되었는가?
+- [ ] 비상 정지 트리거 조건이 정의되었는가?
+- [ ] 비상 정지 시 안전 자세가 정의되었는가?
+- [ ] 추론 지연 초과 시 처리 로직이 있는가?
+
+### 실기 테스트 체크리스트
+
+- [ ] 정적 상태에서 관절 명령 검증 완료
+- [ ] 핸들러 지원 하에 동작 테스트 완료
+- [ ] 비상 정지 동작 확인 완료
+- [ ] 성능 로깅 시스템 동작 확인
+- [ ] 안전 구역 자유 동작 테스트 완료
+
+## 배포 후 모니터링
+
+실제 로봇이 운영 중에도 지속적인 모니터링이 필요합니다:
+
+- **상태 로깅**: 관절 상태, IMU, 추론 지연, 비상 정지 이벤트를 기록합니다.
+- **분포 이탈 감지**: 관측값이 학습 데이터의 분포에서 벗어나는지 확인합니다.
+- **성능 추적**: 과제 성공률, 넘어짐 빈도 등 핵심 지표를 추적합니다.
+
+이 데이터는 다음 학습 사이클의 DR 파라미터 조정과 SysID에 활용됩니다. Sim-to-Real은 일회성 이전이 아니라 **지속적인 피드백 루프**입니다.
+
+<Quiz section="07-sim-to-real" client:load />
