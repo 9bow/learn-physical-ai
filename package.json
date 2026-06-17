@@ -29,7 +29,8 @@
   "pnpm": {
     "overrides": {
       "picomatch": ">=4.0.4",
-      "smol-toml": ">=1.6.1"
+      "smol-toml": ">=1.6.1",
+      "esbuild": ">=0.28.1"
     },
     "onlyBuiltDependencies": [
       "esbuild",
