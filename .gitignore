@@ -7,3 +7,4 @@ dist/
 !.env.example
 *.log
 .vscode/settings.json
+.code-review-graph/
