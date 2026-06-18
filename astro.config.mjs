@@ -6,6 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
 const GA_ID = 'G-WFT8GW8GE3';
+const OG_IMAGE = 'https://9bow.github.io/learn-physical-ai/og-card.png';
 
 export default defineConfig({
   site: 'https://9bow.github.io',
@@ -37,6 +38,11 @@ export default defineConfig({
             "gtag('js', new Date());\n" +
             `gtag('config', '${GA_ID}');`,
         },
+        { tag: 'meta', attrs: { property: 'og:image', content: OG_IMAGE } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: OG_IMAGE } },
       ],
       social: [
         {
