@@ -5,7 +5,7 @@ import react from '@astrojs/react';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
-const GA_ID = 'G-XXXXXXXXXX'; // Phase 8에서 발급/교체 (현재 placeholder)
+const GA_ID = 'G-WFT8GW8GE3';
 
 export default defineConfig({
   site: 'https://9bow.github.io',
