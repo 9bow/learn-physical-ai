@@ -27,6 +27,9 @@ references:
   - title: "Genesis — GitHub"
     url: "https://github.com/Genesis-Embodied-AI/Genesis"
     accessed: "2026-06-17"
+  - title: "Isaac Lab 3.0 optional simulation backends"
+    url: "https://github.com/isaac-sim/IsaacLab/releases/tag/v3.0.0"
+    accessed: "2026-10-23"
 ---
 
 import Quiz from '../../../components/learning/Quiz.tsx';
@@ -69,7 +72,7 @@ import Quiz from '../../../components/learning/Quiz.tsx';
 | SAPIEN | MIT | 자유 |
 | ManiSkill | MIT | 자유 |
 | Genesis | Apache 2.0 | 자유 |
-| Isaac Sim | NVIDIA 사용권 | 조건부 (무료 연구, 상업 별도) |
+| Isaac Sim | 코드·런타임·에셋별 조건 | 사용한 구성 요소의 라이선스 확인 |
 | Isaac Lab | BSD-3 | 자유 |
 
 ## 의사결정 트리
@@ -160,7 +163,7 @@ Isaac Lab         ──▶  지형 다양화, 시각 관찰 추가
 │  (pip install mujoco → 예제 실행)         ●                      │
 │                                                                  │
 │  Genesis                                                         │
-│  (pip install genesis → 예제 실행)        ●                      │
+│  (pip install genesis-world → 예제 실행)        ●                      │
 │                                                                  │
 │  ManiSkill                                                       │
 │  (pip install mani_skill → env.step)       ●                    │
@@ -169,7 +172,7 @@ Isaac Lab         ──▶  지형 다양화, 시각 관찰 추가
 │  (ROS 2 설치 + 패키지 빌드)                    ●                │
 │                                                                  │
 │  Isaac Sim / Lab                                                 │
-│  (NVIDIA 계정 + Omniverse + 대용량 설치)             ●          │
+│  (선택한 백엔드와 호환 드라이버 설치)             ●          │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -177,7 +180,7 @@ Isaac Lab         ──▶  지형 다양화, 시각 관찰 추가
 
 학습 단계별로 다음 순서를 추천합니다.
 
-**입문:** MuJoCo + Gymnasium 표준 환경(CartPole, HalfCheetah 등)으로 RL 기초 익히기.
+**입문:** Gymnasium의 CartPole로 RL 기초를 익히고, MuJoCo 기반 HalfCheetah 같은 환경으로 연속 제어를 다룹니다. CartPole은 MuJoCo 환경이 아닙니다.
 
 **조작 학습 입문:** robosuite의 Lift 과제 + RoboMimic 행동 복제 파이프라인.
 
@@ -191,16 +194,7 @@ Isaac Lab         ──▶  지형 다양화, 시각 관찰 추가
 
 좋은 커뮤니티 지원은 문제 해결 속도에 직접 영향을 줍니다.
 
-| 시뮬레이터 | GitHub Stars | 주요 채널 |
-|-----------|-------------|---------|
-| MuJoCo | 수천 | GitHub Issues, 구글 그룹 |
-| Gazebo | 수천 | ROS Discourse, GitHub |
-| ManiSkill | 수천 | GitHub Issues |
-| robosuite | 수천 | GitHub Issues |
-| Isaac Lab | 수천 | NVIDIA Forums, GitHub |
-| Genesis | 수만 (초기 인기) | GitHub Issues |
-
-> GitHub Stars 수치는 시점에 따라 변동이 크므로 참고만 하고, 프로젝트 선택은 커밋 활성도, Issue 응답 속도, 문서 품질로 판단하세요.
+커뮤니티 평가는 조회 시점의 릴리스 주기·이슈 응답·재현 가능한 예제·지원 문서로 판단합니다. 별 수만으로 물리 정확도나 운영 적합성을 평가하지 않습니다. Isaac Lab 3.0의 Newton·OV 독립 실행도 선택 후보에 포함합니다.
 
 ## 정리
 

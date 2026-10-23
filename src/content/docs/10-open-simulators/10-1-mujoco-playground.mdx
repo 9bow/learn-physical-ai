@@ -17,6 +17,12 @@ references:
   - title: "MuJoCo Playground"
     url: "https://playground.mujoco.org"
     accessed: "2026-06-17"
+  - title: "MuJoCo Playground current JAX and Warp support"
+    url: "https://github.com/google-deepmind/mujoco_playground"
+    accessed: "2026-10-23"
+  - title: "MuJoCo deformable object modeling"
+    url: "https://mujoco.readthedocs.io/en/stable/modeling.html#deformable-objects"
+    accessed: "2026-10-23"
 ---
 
 ![오픈소스 시뮬레이터 섹션 커버 이미지](../../../assets/sections/10.webp)
@@ -104,12 +110,12 @@ def batch_step(data, ctrl):
     return mjx.step(model, data)
 
 # 4096개 환경 동시 실행
-batch_data = jax.vmap(mjx.make_data)(model)
+batch_data = jax.vmap(lambda _: mjx.make_data(mujoco_model))(jnp.arange(4096))
 batch_ctrl = jnp.zeros((4096, model.nu))
 batch_data = batch_step(batch_data, batch_ctrl)
 ```
 
-CPU에서 순차적으로 실행하던 환경을 GPU에서 수천 개 병렬 실행하면, 강화학습에서 경험 수집 속도가 수십 배 빨라집니다.
+GPU 병렬화의 가속 비율은 태스크·배치·컴파일 비용에 따라 측정합니다. 단일 비배치 모델을 `vmap(mjx.make_data)(model)`에 넘기면 모델의 축을 잘못 배치하므로, 초기 데이터를 환경 수만큼 생성해야 합니다.
 
 ## MuJoCo Playground
 
@@ -140,13 +146,17 @@ Playground의 핵심 특징:
 - **GPU 병렬화**: MJX 덕분에 단일 GPU에서 수천 환경 동시 실행
 - **표준 인터페이스**: Gymnasium/Brax 호환 API
 
+## MJX-JAX와 MJX-Warp
+
+현재 Playground 공식 저장소는 JAX 구현과 MuJoCo Warp 구현을 지원합니다. `impl="jax"`·`impl="warp"` 같은 구현 선택과 해당 버전의 학습 설정을 함께 기록합니다. Newton의 MuJoCo-Warp 솔버, 독립 MuJoCo Warp, Playground 환경 API는 같은 프로젝트가 아니므로 설치·벤치마크를 구분합니다.
+
 ## MuJoCo의 한계
 
 MuJoCo가 모든 용도에 최적은 아닙니다.
 
 **시각적 사실감 부족**: 기본 렌더러는 연구용 수준이며, 실제 카메라 영상과 시각적으로 크게 다릅니다. 도메인 무작위화나 별도 렌더링 엔진이 필요할 수 있습니다.
 
-**유연체·유체 미지원**: 천, 종이, 물 같은 변형 가능한 물체나 유체 시뮬레이션은 기본 지원되지 않습니다.
+**변형체·유체의 지원 범위**: MuJoCo 3.x는 `flex` 등 변형 가능한 객체를 지원합니다. 다만 CPU·MJX-JAX·MJX-Warp의 지원 기능이 동일하지 않으며, 유체력 모델을 일반 SPH/MPM 유체 시뮬레이션과 혼동하지 않습니다.
 
 **대규모 씬 복잡도**: 수백 개 물체가 상호작용하는 복잡한 씬에서는 성능이 저하됩니다.
 

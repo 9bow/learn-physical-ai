@@ -214,19 +214,19 @@ Omniverse 탭 또는 Content 브라우저에서:
 
 씬 구성이 완료되면 반드시 USD 파일로 저장합니다.
 
-```bash
+```text
 # 저장 단축키
 Ctrl + S  : 현재 파일에 저장 (덮어쓰기)
 Ctrl + Shift + S : 다른 이름으로 저장
 
 # 저장 시 권장 사항:
-# 1. Nucleus 경로에 저장 (팀 공유 시)
+# 1. 별도 구성한 Enterprise Nucleus 경로 (팀 공유 시)
 #    omniverse://localhost/Projects/robot_project/scenes/scene_001.usd
 # 2. 로컬 경로에 저장 (개인 작업)
 #    /home/user/isaac_project/scenes/scene_001.usd
 ```
 
-씬이 외부 USD 파일(로봇, 환경 자산)을 Reference로 사용하는 경우, 씬 파일을 다른 컴퓨터로 옮길 때 참조된 파일도 함께 이동해야 합니다. Nucleus를 사용하면 경로가 `omniverse://` URL로 고정되어 팀 내에서 공유할 때 경로 문제가 발생하지 않습니다.
+씬이 외부 USD 파일(로봇, 환경 자산)을 Reference로 사용하는 경우, 씬 파일을 다른 컴퓨터로 옮길 때 참조된 파일도 함께 이동해야 합니다. Nucleus는 팀이 같은 에셋을 참조하도록 도울 수 있지만 서버 주소·권한·상대 에셋 경로를 함께 맞춰야 합니다. 로컬 실습에는 Nucleus 서버가 필요하지 않습니다.
 
 ## 씬 최적화 팁
 

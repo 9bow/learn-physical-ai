@@ -20,6 +20,12 @@ references:
   - title: "Learning robust perceptive locomotion for quadrupedal robots in the wild - Science Robotics"
     url: "https://arxiv.org/abs/2201.08117"
     accessed: "2026-06-17"
+  - title: "RMA original project and embodiment"
+    url: "https://ashish-kmr.github.io/rma-legged-robots/"
+    accessed: "2026-10-23"
+  - title: "ANYmal motor skills original 2019 paper"
+    url: "https://arxiv.org/abs/1901.08652"
+    accessed: "2026-10-23"
 ---
 
 ## 사례 연구의 의미
@@ -51,11 +57,11 @@ Isaac Gym 등 GPU 병렬 시뮬레이션을 활용하여 수천 개의 환경에
 │ 2. 다양한 지형 Randomization (경사, 계단, 불규칙 지면)      │
 │ 3. 외란 랜덤화 (외력 적용, 페이로드 변화)                   │
 │ 4. 관절 파라미터 SysID 기반 DR 범위 설정                    │
-│ 5. 학습 후 추가 실제 데이터로 정책 파인튜닝                  │
+│ 5. 실제 액추에이터 데이터와 정책의 실물 추가 학습을 구분       │
 └───────────────────────────────────────────────────────────────┘
 ```
 
-후속 연구(RMA: Rapid Motor Adaptation)에서는 환경 적응 모듈을 추가하여, 처음 보는 지면(젖은 표면, 얼음 등)에도 온라인으로 적응하는 능력을 보였습니다. 이 연구는 Sim-to-Real의 범위를 "알려진 도메인 이전"에서 "미지 도메인 실시간 적응"으로 확장했습니다.
+별도 연구인 **RMA(Rapid Motor Adaptation, 2021)**는 UC Berkeley·CMU·Facebook AI 연구진이 Unitree A1에 적용했습니다. 시뮬레이션에서 학습한 적응 모듈이 관측 이력으로 환경 요인을 추정하며, 실물에서 정책 가중치를 다시 학습하는 것과 다릅니다. ANYmal 액추에이터 네트워크·Isaac Gym 병렬 학습·RMA는 로봇과 연구 시점이 다른 사례이므로 하나의 파이프라인으로 합쳐 서술하지 않습니다.
 
 ## 사례 2: OpenAI Dactyl (In-Hand Manipulation)
 

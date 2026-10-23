@@ -19,6 +19,9 @@ references:
   - title: "Isaac Sim 합성 데이터 생성 가이드"
     url: "https://docs.isaacsim.omniverse.nvidia.com"
     accessed: "2026-06-17"
+  - title: "Isaac Sim 5.1 Replicator step, writer and completion lifecycle"
+    url: "https://docs.isaacsim.omniverse.nvidia.com/5.1.0/replicator_tutorials/tutorial_replicator_getting_started.html"
+    accessed: "2026-10-23"
 ---
 
 import Quiz from '../../../components/learning/Quiz.tsx';
@@ -61,97 +64,48 @@ Replicator 핵심 기능
 
 Replicator를 사용하는 스크립트는 세 부분으로 구성됩니다: **씬 설정**, **랜덤화 정의**, **실행 루프**.
 
+다음 Standalone 예제는 **Isaac Sim 5.1 / Python 3.11 재현 경로**에서 외부 에셋 없이 큐브 이미지와 2D 박스를 10프레임 저장합니다. 5.1은 지원 종료된 버전이며, 새 6.x 프로젝트는 해당 버전의 SDG·랜덤화 마이그레이션 문서를 따릅니다. `SimulationApp`을 먼저 시작한 뒤 Replicator를 import합니다.
+
 ```python
-# 개념 이해용 의사코드
-# 실제 API와 import 경로는 Replicator/Isaac Sim 버전에 따라 다름
-# 공식 문서의 해당 버전 예제를 기준으로 사용할 것
+from isaacsim import SimulationApp
 
-import omni.replicator.core as rep  # Replicator 핵심 모듈 (버전 확인)
+simulation_app = SimulationApp({"headless": True})
+import omni.replicator.core as rep
 
-# ─────────────────────────────────────────
-# 1단계: 씬 구성 (기존 씬 활용 또는 여기서 생성)
-# ─────────────────────────────────────────
-with rep.new_layer():  # 랜덤화용 새 레이어
-    # 카메라 생성
-    camera = rep.create.camera(
-        position=(0, 0.5, 1.5),
-        look_at=(0, 0, 0.5)
+with rep.new_layer():
+    camera = rep.create.camera(position=(3, 3, 3), look_at=(0, 0, 0.5))
+    render_product = rep.create.render_product(camera, (640, 480))
+    cube = rep.create.cube(
+        position=(0, 0, 0.5), semantics=[("class", "cube")]
     )
+    rep.create.light(light_type="dome", intensity=1000)
 
-    # 렌더 제품(Render Product) 생성
-    # 카메라와 해상도를 연결하는 렌더링 설정
-    render_product = rep.create.render_product(
-        camera, (1280, 720)  # 해상도
-    )
-
-    # ─────────────────────────────────────────
-    # 2단계: 랜덤화 정의
-    # ─────────────────────────────────────────
-    # 물체 위치 랜덤화
-    with rep.randomizer.register(object_prim_path):
-        rep.modify.pose(
-            position=rep.distribution.uniform(
-                (-0.3, -0.3, 0.76),   # 최솟값 (x, y, z) — 높이는 Z
-                (0.3, 0.3, 0.76)      # 최댓값
-            ),
-            rotation=rep.distribution.uniform(
-                (0, -180, 0),          # 회전 최솟값
-                (0, 180, 0)            # 회전 최댓값
+    with rep.trigger.on_frame(num_frames=10):
+        with cube:
+            rep.modify.pose(
+                position=rep.distribution.uniform(
+                    (-0.5, -0.5, 0.5), (0.5, 0.5, 0.5)
+                )
             )
-        )
 
-    # 조명 강도 랜덤화
-    with rep.randomizer.register(light_prim_path):
-        rep.modify.attribute(
-            "inputs:intensity",
-            rep.distribution.uniform(500, 3000)
-        )
+writer = rep.WriterRegistry.get("BasicWriter")
+writer.initialize(
+    output_dir="./synthetic_data",
+    rgb=True,
+    bounding_box_2d_tight=True,
+)
+writer.attach([render_product])
 
-    # 머티리얼 색상 랜덤화
-    with rep.randomizer.register(material_prim_path):
-        rep.modify.attribute(
-            "inputs:diffuse_tint",
-            rep.distribution.uniform((0, 0, 0), (1, 1, 1))
-        )
-
-    # ─────────────────────────────────────────
-    # 3단계: 어노테이션 설정
-    # ─────────────────────────────────────────
-    # 바운딩 박스 어노테이터
-    bbox_annotator = rep.AnnotatorRegistry.get_annotator(
-        "bounding_box_2d_tight"
-    )
-    bbox_annotator.attach(render_product)
-
-    # 인스턴스 세그멘테이션 어노테이터
-    seg_annotator = rep.AnnotatorRegistry.get_annotator(
-        "instance_segmentation"
-    )
-    seg_annotator.attach(render_product)
-
-    # RGB 이미지 어노테이터
-    rgb_annotator = rep.AnnotatorRegistry.get_annotator("rgb")
-    rgb_annotator.attach(render_product)
-
-    # ─────────────────────────────────────────
-    # 4단계: Writer 설정 (데이터 저장 형식)
-    # ─────────────────────────────────────────
-    writer = rep.WriterRegistry.get("BasicWriter")  # 기본 Writer
-    writer.initialize(
-        output_dir="/output/synthetic_data",
-        rgb=True,
-        bounding_box_2d_tight=True,
-        instance_segmentation=True
-    )
-    writer.attach(render_product)
-
-# ─────────────────────────────────────────
-# 5단계: 데이터 생성 실행
-# ─────────────────────────────────────────
-with rep.trigger.on_frame(num_frames=1000):
-    # 각 프레임마다 랜덤화 적용 후 렌더링·저장
-    rep.randomizer.run_all()  # 등록된 모든 랜덤화 실행
+for _ in range(10):
+    rep.orchestrator.step(rt_subframes=4)
+rep.orchestrator.wait_until_complete()
+writer.detach()
+simulation_app.close()
 ```
+
+설치 챕터의 5.1 가상환경에서 파일로 저장한 뒤 `python generate_data.py`로 실행합니다. 바이너리 설치는 해당 Isaac Sim의 `python.sh`를 사용합니다. GUI Script Editor에는 `SimulationApp` 시작·종료 루프를 그대로 붙이지 않습니다.
+
+완료 기준은 RGB와 박스/클래스 매핑 파일이 기록되고, 프레임별 박스가 실제 큐브와 정렬되는 것입니다. `on_frame` 정의만으로 데이터 생성이 실행되지는 않습니다. 오케스트레이터로 캡처를 진행하고 비동기 쓰기가 끝날 때까지 기다립니다. `rep.randomizer.run_all()` 같은 가상 호출은 사용하지 않습니다.
 
 ## 어노테이션 타입 상세
 
@@ -239,7 +193,7 @@ bbox_data = bbox_annotator.get_data()
          │
          ▼
 단계 5: 실제 데이터와 혼합 (선택)
-  합성 데이터 80% + 실제 데이터 20%
+  합성/실제 혼합 비율은 별도 검증 세트에서 선택
   또는 합성 데이터만으로 사전학습 후 실제 데이터로 파인튜닝
          │
          ▼

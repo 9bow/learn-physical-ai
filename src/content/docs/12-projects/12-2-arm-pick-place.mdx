@@ -23,7 +23,12 @@ references:
   - title: "Isaac Lab GitHub - Manipulation"
     url: "https://github.com/isaac-sim/IsaacLab/tree/main/source/isaaclab_tasks"
     accessed: "2026-06-17"
+  - title: "Isaac Lab 2.3.2 registered Franka Lift task scope"
+    url: "https://github.com/isaac-sim/IsaacLab/blob/v2.3.2/source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/lift/config/franka/__init__.py"
+    accessed: "2026-10-23"
 ---
+
+> **실습 버전**: 아래 `isaaclab.sh`·환경 구성·Torch 텐서 예제는 Isaac Lab 2.3.2 + Isaac Sim 5.1 경로입니다. 지원이 종료된 Sim 5.1 예제의 재현 범위이며, 새 프로젝트는 [3.0 설치 및 마이그레이션](../../05-isaac-lab/5-2-installation-setup/)을 참고합니다. 3.0에서는 CLI·쿼터니언 순서·데이터 API가 바뀝니다.
 
 ## 프로젝트 개요
 
@@ -166,7 +171,7 @@ def check_grasp(robot, object_prim):
 
 ```bash
 # Pick-and-Place RL 학습 (기본 Franka 환경)
-./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py \
+./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py \
   --task Isaac-Lift-Cube-Franka-v0 \
   --num_envs 2048 \
   --headless \
@@ -176,19 +181,9 @@ def check_grasp(robot, object_prim):
 tensorboard --logdir logs/rsl_rl/franka_lift
 ```
 
-조작 태스크는 보행보다 학습이 느립니다. 합성 시연 데이터를 활용한 **모방학습(Imitation Learning)** 으로 초기화한 뒤 RL로 파인튜닝하는 **Residual RL** 방식이 수렴 속도를 크게 향상시킵니다.
+시연 기반 초기화 후 RL을 수행하는 방법은 유용하지만 이를 모두 Residual RL이라고 부르지는 않습니다. Residual RL은 기존 제어기나 정책의 행동에 학습한 보정량을 더하는 구조입니다. BC 체크포인트는 관측·행동·정책 구조가 맞아야 RL로 옮길 수 있으며, RSL-RL에 임의의 `--pretrained_checkpoint`를 전달하는 공통 경로는 없습니다.
 
-```bash
-# 모방학습 사전 학습 후 RL 파인튜닝 (개념 — 실제 워크플로는 공식 문서 확인)
-./isaaclab.sh -p source/standalone/workflows/bc/train.py \
-  --task Isaac-Lift-Cube-Franka-v0 \
-  --dataset /path/to/demonstrations.hdf5
-
-# BC로 학습된 정책에서 시작하여 RL 파인튜닝
-./isaaclab.sh -p source/standalone/workflows/rsl_rl/train.py \
-  --task Isaac-Lift-Cube-Franka-v0 \
-  --pretrained_checkpoint /path/to/bc_checkpoint.pt
-```
+위 기본 Lift 태스크는 큐브 들어 올리기를 학습하며 최종 위치에 내려놓기까지 자동 포함하지 않습니다. Pick-and-Place를 완성하려면 목표 포즈 명령·접근·파지·운반·놓기 상태와 보상/성공 판정을 추가해야 합니다. 단계 1~3의 사용자 환경 설정을 등록한 뒤 해당 태스크 ID로 학습합니다.
 
 ## 단계 5: MoveIt 2 통합
 
@@ -236,13 +231,13 @@ def place_object(target_pose: PoseStamped):
 
 ```bash
 # 학습된 정책 시연
-./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py \
+./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \
   --task Isaac-Lift-Cube-Franka-v0 \
   --num_envs 16 \
   --checkpoint /path/to/checkpoint.pt
 
 # 성공률 측정 (100 에피소드)
-./isaaclab.sh -p source/standalone/workflows/rsl_rl/play.py \
+./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \
   --task Isaac-Lift-Cube-Franka-v0 \
   --num_envs 100 \
   --checkpoint /path/to/checkpoint.pt \

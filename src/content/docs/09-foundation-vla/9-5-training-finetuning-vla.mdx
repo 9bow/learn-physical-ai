@@ -18,6 +18,12 @@ references:
   - title: "Physical Intelligence — π0"
     url: "https://www.physicalintelligence.company"
     accessed: "2026-06-17"
+  - title: "openpi public training and models"
+    url: "https://github.com/Physical-Intelligence/openpi"
+    accessed: "2026-10-23"
+  - title: "OpenVLA-OFT continuous action fine-tuning"
+    url: "https://openvla-oft.github.io/"
+    accessed: "2026-10-23"
 ---
 
 ## 학습 파이프라인 개요
@@ -151,12 +157,12 @@ lora_config = LoraConfig(
 )
 
 model = get_peft_model(model, lora_config)
-# 전체 파라미터 중 약 1-2%만 학습 가능 상태로 전환
+# 학습 가능한 비율은 rank와 적용 모듈에 따라 달라집니다
 model.print_trainable_parameters()
 # trainable params: 4,194,304 / total: 7,000,000,000 (약 0.06%)
 ```
 
-LoRA를 사용하면 단일 A100 GPU에서도 대형 VLA 모델을 파인튜닝할 수 있습니다.
+LoRA 메모리 요구량은 모델·이미지 수·청크 길이·정밀도·배치·적용 레이어에 따라 달라집니다. A100 같은 학습 GPU가 Isaac Sim의 RTX 실행 요구사항까지 충족한다는 뜻은 아닙니다.
 
 ## 학습 루프와 손실 함수
 
@@ -187,6 +193,12 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 ```
+
+## 공개 학습 경로 선택
+
+OpenVLA 원본의 토큰 분류 손실, OpenVLA-OFT의 연속 행동/L1 손실, openpi의 흐름 매칭, GR00T의 modality 설정을 각각 유지합니다. 위 토큰화·cross-entropy 조각은 이산 행동 모델의 개념 예시이며 π0.5·GR00T에 공통으로 적용하는 학습 루프가 아닙니다.
+
+LeRobot 0.6은 정책별 학습 CLI를 제공하지만 extras와 데이터셋 포맷을 맞춰야 합니다. GR00T 참조 구현의 LeRobot v2 + modality 파일과 LeRobotDataset v3를 혼동하지 않습니다. 데이터 준비 뒤 실제 입력 배치·행동 역정규화·패딩 마스크를 검사하고 짧은 학습·체크포인트 재로드를 먼저 확인합니다.
 
 ## 평가 루프
 

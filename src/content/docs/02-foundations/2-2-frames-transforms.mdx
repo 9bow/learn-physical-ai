@@ -21,6 +21,9 @@ references:
   - title: "Euler Angles - Wikipedia"
     url: "https://en.wikipedia.org/wiki/Euler_angles"
     accessed: "2026-06-17"
+  - title: "Isaac Lab 3.0 quaternion migration"
+    url: "https://github.com/isaac-sim/IsaacLab/releases/tag/v3.0.0"
+    accessed: "2026-10-23"
 ---
 
 ## 좌표 프레임이란
@@ -197,7 +200,7 @@ q_total = q2 * q1    (q1 먼저, q2 나중)
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-# 오일러각 (ZYX 순서, 단위: 라디안)
+# 오일러각 (고정축 xyz 순서, 단위: 라디안)
 euler_angles = [0.1, 0.2, 0.3]   # roll, pitch, yaw
 
 # 오일러각 → 쿼터니언 변환
@@ -215,6 +218,18 @@ r_combined = r2 * r1   # r1 먼저, r2 나중
 ```
 
 Isaac Sim에서는 `pxr.Gf.Quatf` 또는 `torch.Tensor`로 쿼터니언을 표현하며, Isaac Lab에서는 GPU 텐서 연산으로 수천 개의 로봇 자세를 동시에 처리합니다.
+
+### 라이브러리 사이 쿼터니언 순서
+
+수학적 표기와 배열 저장 순서를 구분합니다. SciPy `as_quat()`와 ROS 메시지는 XYZW, Isaac Lab 2.x는 WXYZ, Isaac Lab 3.0은 XYZW를 사용합니다. USD `Gf.Quatf`는 실수부와 허수 벡터를 구분하는 생성자를 사용합니다. 벡터를 그대로 복사하지 말고 경계에서 순서를 명시적으로 변환합니다.
+
+```python
+q_wxyz = np.array([1.0, 0.0, 0.0, 0.0])
+q_xyzw = q_wxyz[[1, 2, 3, 0]]
+assert np.allclose(Rotation.from_quat(q_xyzw).as_matrix(), np.eye(3))
+```
+
+항등 회전·90도 회전·왕복 변환으로 검사합니다. 올바른 순서라도 로컬/월드 프레임이나 능동/수동 회전 해석이 다르면 결과가 달라집니다.
 
 ## 변환 체인의 예시
 

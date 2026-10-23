@@ -18,6 +18,9 @@ references:
   - title: "SAPIEN 공식 페이지"
     url: "https://sapien.ucsd.edu"
     accessed: "2026-06-17"
+  - title: "ManiSkill official GPU examples and PickCube task"
+    url: "https://github.com/haosulab/ManiSkill"
+    accessed: "2026-10-23"
 ---
 
 ## SAPIEN이란
@@ -91,7 +94,7 @@ import mani_skill.envs  # 환경 등록
 
 # GPU 병렬 환경 생성
 env = gym.make(
-    "PickAndPlace-v1",
+    "PickCube-v1",
     num_envs=512,           # 512개 환경 병렬
     obs_mode="state",       # 상태 기반 관찰
     control_mode="pd_ee_delta_pose",  # 엔드이펙터 제어
@@ -129,10 +132,10 @@ ManiSkill은 강화학습뿐 아니라 **모방학습(imitation learning)** 도 
 ```python
 # 개념 이해용 의사코드 — 시연 데이터 로드
 from mani_skill.utils.io_utils import load_json
-from mani_skill.trajectory import load_h5_data
+import h5py
 
 # 제공된 전문가 시연 데이터 로드
-demos = load_h5_data("demos/PickAndPlace-v1/trajectory.h5")
+demos = h5py.File("demos/PickCube-v1/trajectory.h5", "r")
 # demos: 에피소드별 관찰, 행동, 보상 포함
 ```
 
@@ -142,6 +145,6 @@ demos = load_h5_data("demos/PickAndPlace-v1/trajectory.h5")
 
 **PhysX 의존성**: NVIDIA PhysX에 의존하므로, NVIDIA GPU가 없는 환경에서는 일부 기능이 제한됩니다.
 
-**접촉 정확성**: MuJoCo에 비해 접촉 처리가 덜 안정적이라는 보고가 있습니다. 특히 정밀한 조립 과제(PegInsertion 등)에서 시뮬레이션 품질 차이가 나타날 수 있습니다.
+**접촉 검증**: 시간 간격·솔버·충돌 메시·마찰 설정이 정밀 조립 결과를 바꿉니다. 엔진 이름만으로 정확도 순위를 정하지 말고 과제에서 관통·성공률·실물 전이를 비교합니다.
 
 다음 챕터에서는 모방학습의 표준 데이터셋과 알고리즘을 제공하는 robosuite와 RoboMimic을 살펴봅니다.

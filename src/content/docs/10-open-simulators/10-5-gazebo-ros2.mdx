@@ -17,11 +17,14 @@ references:
   - title: "ROS 2 공식 문서"
     url: "https://docs.ros.org"
     accessed: "2026-06-17"
+  - title: "Gazebo official ROS pairing table"
+    url: "https://gazebosim.org/docs/latest/ros_installation/"
+    accessed: "2026-10-23"
 ---
 
 ## Gazebo의 역사와 위치
 
-**Gazebo**는 2002년 처음 개발되어 수십 년간 로봇 연구 커뮤니티의 표준 시뮬레이터 자리를 지켜온 오픈소스 로봇 시뮬레이터입니다. Open Robotics가 관리하며 현재는 **Gazebo Harmonic**, **Gazebo Ionic** 같은 버전이 활발히 사용됩니다.
+**Gazebo**는 2002년 처음 개발되어 수십 년간 로봇 연구 커뮤니티의 표준 시뮬레이터 자리를 지켜온 오픈소스 로봇 시뮬레이터입니다. Open Robotics 생태계에서 개발하며 릴리스마다 지원 기간과 ROS 조합이 다릅니다. 2026-10-23 기준 Jetty는 LTS이며, 기존 Jazzy 프로젝트는 Harmonic 조합을 사용합니다.
 
 > 주의: 이전에 "Gazebo"라 불리던 시뮬레이터가 **Ignition Gazebo**를 거쳐 단순히 **Gazebo**로 재브랜딩되었습니다. 구버전은 **Classic Gazebo(Gazebo 11까지)** 로 구분합니다. 문서나 패키지 이름에서 혼동에 주의하세요.
 
@@ -32,9 +35,9 @@ Gazebo의 강점은 **생태계의 깊이**입니다.
 │                Gazebo 생태계 구성                                 │
 │                                                                  │
 │  물리 엔진 플러그인                                              │
-│  ├─ ODE (기본값)                                                │
+│  ├─ DART (현대 Gazebo의 기본 경로)                                                │
 │  ├─ Bullet                                                       │
-│  ├─ DART                                                         │
+│  ├─ ODE (Gazebo Classic의 기본값, 현대 버전과 구분)               │
 │  └─ NVIDIA PhysX (일부 버전)                                    │
 │                                                                  │
 │  센서 플러그인                                                   │
@@ -50,6 +53,23 @@ Gazebo의 강점은 **생태계의 깊이**입니다.
 │  └─ 방대한 커뮤니티 모델 라이브러리                              │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+## 지원되는 ROS 조합
+
+| ROS 2 | 공식 권장 Gazebo 조합 |
+|---|---|
+| Humble | Fortress |
+| Jazzy | Harmonic |
+| Kilted | Ionic |
+| Lyrical | Jetty |
+
+Gazebo Classic은 2025년 1월 지원이 종료되었습니다. Classic의 ODE·`gazebo_ros_pkgs` 안내와 현대 Gazebo의 DART·`ros_gz` 안내를 혼용하지 않습니다. `ROS_DISTRO`가 설치한 배포판으로 설정된 Ubuntu 셸에서 다음 명령은 해당 기본 Gazebo 조합을 설치합니다.
+
+```bash
+sudo apt install "ros-${ROS_DISTRO}-ros-gz"
+```
+
+Bridge는 메시지 타입을 변환하며 로봇 모델·관절 제어·TF를 자동으로 모두 구성하는 도구는 아닙니다. 프로젝트의 world SDF·토픽 이름·메시지 타입을 맞춥니다.
 
 ## ROS 2와 Gazebo 통합
 

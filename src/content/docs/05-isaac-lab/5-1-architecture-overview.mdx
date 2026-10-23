@@ -20,13 +20,16 @@ references:
   - title: "Isaac Lab - Design Philosophy"
     url: "https://isaac-sim.github.io/IsaacLab/"
     accessed: "2026-06-17"
+  - title: "Isaac Lab 3.0 multi-backend release"
+    url: "https://github.com/isaac-sim/IsaacLab/releases/tag/v3.0.0"
+    accessed: "2026-10-23"
 ---
 
 ![Isaac Lab — 강화학습 환경 섹션 커버 이미지](../../../assets/sections/05.webp)
 
 ## Isaac Lab이란 무엇인가
 
-**Isaac Lab**은 NVIDIA가 개발한 오픈소스 로봇 학습(robot learning) 프레임워크입니다. Isaac Sim을 시뮬레이션 백엔드로 사용하며, 그 위에 강화학습(Reinforcement Learning, RL)과 모방학습(Imitation Learning, IL)에 필요한 고수준 API와 도구를 제공합니다.
+**Isaac Lab**은 NVIDIA가 개발한 오픈소스 로봇 학습(robot learning) 프레임워크입니다. 강화학습(Reinforcement Learning, RL)과 모방학습(Imitation Learning, IL)에 필요한 고수준 API와 도구를 제공합니다. 2.x는 Isaac Sim 기반이며, 2026-10-20 공개된 3.0은 Newton·OVPhysX·OVRTX·Isaac Sim을 선택하는 다중 백엔드 구조입니다.
 
 Isaac Lab은 이전 세대 프레임워크인 **Isaac Gym**과 **OmniIsaacGymEnvs(OIGE)**의 기능을 통합하고 확장한 후속 프로젝트입니다. 기존 두 프레임워크가 각자 별도로 유지되면서 발생하던 중복과 비효율을 해소하고, Isaac Sim의 PhysX 5 기반 GPU 물리 시뮬레이션을 완전히 활용할 수 있도록 설계되었습니다.
 
@@ -47,6 +50,8 @@ Isaac Lab은 이전 세대 프레임워크인 **Isaac Gym**과 **OmniIsaacGymEnv
 │   CUDA / GPU 하드웨어                                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+위 그림과 아래 Manager-based·Direct 설명은 기존 2.x/Isaac Sim 경로의 구조입니다. 3.0은 물리·렌더링·시각화를 분리하며 Isaac Sim을 필수 의존성으로 요구하지 않습니다. 데이터는 Warp/Torch 경로를 명시하는 `ProxyArray`로 제공됩니다. 기존 텐서 코드를 3.0에 옮길 때는 설치 챕터의 변환 항목을 확인합니다.
 
 ## Isaac Gym과의 관계
 

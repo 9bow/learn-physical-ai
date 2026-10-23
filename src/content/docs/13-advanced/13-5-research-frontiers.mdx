@@ -23,6 +23,12 @@ references:
   - title: "Humanoid Locomotion as Next Token Prediction — arXiv"
     url: "https://arxiv.org/abs/2402.19469"
     accessed: "2026-06-17"
+  - title: "Cosmos 3 interactive world model examples"
+    url: "https://github.com/NVIDIA/Cosmos"
+    accessed: "2026-10-23"
+  - title: "openpi generalist model releases"
+    url: "https://github.com/Physical-Intelligence/openpi"
+    accessed: "2026-10-23"
 ---
 
 import Quiz from '../../../components/learning/Quiz.tsx';
@@ -53,6 +59,10 @@ import Quiz from '../../../components/learning/Quiz.tsx';
 ```
 
 현재 물리 AI에서 월드 모델 연구의 주요 도전은 **접촉이 포함된 조작의 정확한 예측**입니다. 사람이 물체를 집거나 미는 장면처럼 접촉 역학이 복잡한 상황을 몇 초 앞서 예측하는 것은 아직 미해결 문제입니다. Google DeepMind의 Genie 2 같은 대규모 영상 모델이 물리적으로 그럴듯한 환경 시뮬레이션 능력을 보이고 있지만, 아직 정밀한 로봇 제어에 직접 쓸 수 있는 수준은 아닙니다.
+
+2026년 공개 구현에서는 Cosmos 3의 상호작용 시뮬레이션 예제, GR00T N1.7의 공개 후학습·배포 경로, openpi의 π0.5가 구체적인 실험 출발점입니다. 이들은 서로 다른 데이터·행동 공간·검증 범위를 갖습니다. 오픈 루프 예측 오차, 폐루프 성공률, 실물 이전, 추론 지연을 분리해 측정해야 일반화 주장을 비교할 수 있습니다.
+
+시연에서 성공한 과제와 학습에 없는 환경에서의 성공을 구분합니다. 생성형 시뮬레이터에서는 물리 오류를 이용하는 정책, 장기 rollout의 누적 오차, 생성 데이터와 평가 데이터의 중복도 함께 점검합니다.
 
 ## 대규모 로봇 데이터의 문제
 

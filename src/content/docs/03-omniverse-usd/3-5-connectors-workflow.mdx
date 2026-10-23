@@ -17,6 +17,9 @@ references:
   - title: "NVIDIA Omniverse Connector 문서"
     url: "https://docs.omniverse.nvidia.com/connect"
     accessed: "2026-06-17"
+  - title: "Omniverse Launcher and Nucleus Workstation retirement"
+    url: "https://developer.nvidia.com/omniverse/legacy-tools"
+    accessed: "2026-10-23"
 ---
 
 import Quiz from '../../../components/learning/Quiz.tsx';
@@ -126,7 +129,7 @@ Nucleus 협업 구조
 
 ### Nucleus 접속 방식
 
-개발 단계에서는 로컬 머신에서 Nucleus를 실행합니다. 팀 협업이 필요한 경우 네트워크 서버에 Nucleus를 배포하고 `omniverse://<서버주소>/path/to/file.usd` 형식의 URL로 접근합니다.
+단독 개발은 로컬 USD 파일과 상대 에셋 경로로 시작합니다. Launcher에 포함되던 Nucleus Workstation은 2025-10-01 지원이 종료되었습니다. 팀 라이브 협업은 Enterprise Nucleus Server를 별도로 검토하고 `omniverse://<서버주소>/path/to/file.usd`로 접근합니다. 파일 참조 실습에 서버 설치는 필수 조건이 아닙니다.
 
 Isaac Sim에서 Nucleus 경로로 씬을 열면 다른 도구나 팀원이 해당 씬을 수정할 때 Isaac Sim이 변경 사항을 자동으로 수신합니다. 로봇 모델 팀이 로봇 링크를 수정하면 시뮬레이션 팀의 Isaac Sim이 자동으로 업데이트된 모델로 전환됩니다.
 

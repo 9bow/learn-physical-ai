@@ -3,25 +3,25 @@
     "id": "q1",
     "question": "ROS 2에서 'Node(노드)'란?",
     "options": [
-      "특정 기능을 수행하는 독립적인 실행 프로세스",
+      "특정 기능과 통신 인터페이스를 가진 논리 실행 단위",
       "토픽 메시지의 데이터 타입 정의",
       "로봇 URDF 파일의 링크 요소",
       "ROS 2 패키지 저장소의 단위"
     ],
     "answer": 0,
-    "explanation": "ROS 2 Node는 단일 기능(센서 읽기, 모터 제어 등)을 담당하는 독립적인 실행 단위로, 퍼블리셔/서브스크라이버/서비스/액션을 통해 다른 노드와 통신합니다."
+    "explanation": "ROS 2 노드는 논리 실행 단위입니다. 한 프로세스에 여러 노드를 구성할 수 있으므로 노드와 프로세스를 동일시하지 않습니다."
   },
   {
     "id": "q2",
     "question": "ROS 2 'Topic(토픽)'과 'Service(서비스)'의 차이점은?",
     "options": [
       "토픽은 바이너리 데이터, 서비스는 텍스트 데이터만 전송한다",
-      "토픽은 비동기 단방향 메시지 스트림, 서비스는 동기 요청-응답 통신이다",
+      "토픽은 발행·구독 스트림이며 서비스는 요청·응답 패턴이다",
       "토픽은 ROS 1에서만, 서비스는 ROS 2에서만 사용된다",
       "토픽은 1:1, 서비스는 1:N 통신이다"
     ],
     "answer": 1,
-    "explanation": "Topic은 발행자(Publisher)가 구독자(Subscriber)에게 지속적으로 비동기 메시지를 전송하는 방식이고, Service는 클라이언트가 서버에 요청하고 응답을 기다리는 동기 통신입니다."
+    "explanation": "서비스는 요청·응답 패턴이며 클라이언트 API는 동기 또는 비동기로 사용할 수 있습니다."
   },
   {
     "id": "q3",
@@ -73,15 +73,15 @@
   },
   {
     "id": "q7",
-    "question": "NITROS(NVIDIA Isaac Transport for ROS)의 목적은?",
+    "question": "Isaac ROS 4.x 이하의 NITROS가 제공하던 기능은?",
     "options": [
       "ROS 2 DDS 미들웨어 대체 구현",
       "Isaac Sim의 물리 엔진 백엔드",
-      "ROS 2 노드 간 GPU 메모리 데이터를 CPU 복사 없이 전달하여 지연을 줄이는 제로 카피 전송 프레임워크",
+      "지원 타입·노드 배치 조건에서 GPU 버퍼 복사를 줄이는 전송 프레임워크",
       "Jetson과 클라우드 간 모델 동기화 도구"
     ],
     "answer": 2,
-    "explanation": "NITROS는 Isaac ROS 파이프라인에서 GPU 메모리의 데이터를 CPU로 복사하지 않고 노드 간 직접 전달(Zero-Copy)하여 카메라/LiDAR 처리 파이프라인의 지연과 대역폭을 최적화합니다."
+    "explanation": "NITROS는 지원 타입·노드 구성 조건에서 GPU 버퍼 복사를 줄였습니다. Isaac ROS 5.0은 ROS 2 Lyrical의 rosidl::Buffer와 CUDA 버퍼 백엔드로 이동하므로 구버전 사용자 API를 마이그레이션해야 합니다."
   },
   {
     "id": "q8",
@@ -125,11 +125,11 @@
     "options": [
       "GPU 메모리 할당을 최적화하기 위해",
       "노드 실행 우선순위를 CPU 스케줄러에 전달하기 위해",
-      "네트워크 환경에 따라 메시지 신뢰성, 지속성, 지연 등을 조절하여 실시간성을 보장하기 위해",
+      "메시지 신뢰성·지속성·대기열 등 응용의 통신 요구를 조절하기 위해",
       "ROS 2 패키지 버전을 관리하기 위해"
     ],
     "answer": 2,
-    "explanation": "ROS 2 QoS 정책(Reliability, Durability, History, Deadline 등)을 통해 신뢰성 전송(Reliable) vs 최선 전달(Best Effort) 등을 상황에 맞게 설정하여 실시간 로봇 시스템을 구성합니다."
+    "explanation": "QoS는 reliability·durability·history·deadline 등을 조절합니다. 설정만으로 전체 로봇의 hard real-time 실행이 보장되지는 않습니다."
   },
   {
     "id": "q12",

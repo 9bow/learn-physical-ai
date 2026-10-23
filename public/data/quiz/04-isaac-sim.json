@@ -49,7 +49,7 @@
   },
   {
     "id": "q5",
-    "question": "Isaac Sim Python API에서 시뮬레이션 한 스텝을 진행하는 일반적인 메서드는?",
+    "question": "이 코스의 Isaac Sim 5.1 World API 예제에서 한 스텝을 진행하는 메서드는?",
     "options": [
       "`world.step(render=True)`",
       "`sim.advance()`",
@@ -57,7 +57,7 @@
       "`world.reset()`"
     ],
     "answer": 0,
-    "explanation": "Isaac Sim Python API에서 `world.step(render=True/False)`를 호출하여 물리 시뮬레이션 한 스텝을 진행하고 선택적으로 렌더링을 수행합니다."
+    "explanation": "5.1 World API 예제는 world.step(render=True/False)를 사용합니다. Sim 6.x의 Core Experimental API 마이그레이션과 구분합니다."
   },
   {
     "id": "q6",

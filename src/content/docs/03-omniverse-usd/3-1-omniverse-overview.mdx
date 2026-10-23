@@ -20,6 +20,9 @@ references:
   - title: "OpenUSD 공식 사이트"
     url: "https://openusd.org"
     accessed: "2026-06-17"
+  - title: "Omniverse Launcher and Nucleus Workstation retirement"
+    url: "https://developer.nvidia.com/omniverse/legacy-tools"
+    accessed: "2026-10-23"
 ---
 
 ![Omniverse & OpenUSD 섹션 커버 이미지](../../../assets/sections/03.webp)
@@ -68,7 +71,7 @@ Nucleus는 Omniverse의 **씬 데이터 협업 서버**입니다. 여러 클라�
 
 Nucleus가 해결하는 문제는 명확합니다. 기존 3D 작업 환경에서 여러 팀이 동일한 씬을 다룰 때는 파일을 복사하고 병합하는 수작업이 필요했습니다. Nucleus는 **변경 델타(delta)만 전송하는 라이브 동기화** 방식으로 이 문제를 해결합니다. 로봇 개발 맥락에서는 설계 팀이 로봇 모델을 수정하면 시뮬레이션 팀이 즉시 업데이트된 씬을 받아볼 수 있습니다.
 
-Nucleus는 로컬 머신에서도 실행 가능하고, 팀 단위 협업을 위해 서버에 배포할 수도 있습니다. 데이터 전송에는 **Omniverse 전용 프로토콜(omniverse://)**을 사용하며, 씬 파일·머티리얼·텍스처 등을 체계적으로 관리합니다.
+Nucleus Workstation은 Launcher와 함께 2025-10-01 지원이 종료되었습니다. 새 협업 환경은 Enterprise Nucleus Server의 배포·라이선스 조건을 확인합니다. 단독 실습은 로컬 USD 파일만으로 진행할 수 있습니다. 데이터 전송에는 **Omniverse 전용 프로토콜(omniverse://)**을 사용하며, 씬 파일·머티리얼·텍스처 등을 체계적으로 관리합니다.
 
 ### Omniverse Kit — 확장 가능한 애플리케이션 프레임워크
 
@@ -102,6 +105,8 @@ Omniverse의 RTX 렌더러는 두 가지 모드를 제공합니다.
 Omniverse Connector는 Blender, Maya, 3ds Max, Revit, AutoCAD 같은 기존 DCC(Digital Content Creation) 툴이나 CAD 소프트웨어에서 USD 데이터를 바로 내보내고 가져올 수 있도록 하는 플러그인 모음입니다.
 
 로봇 공학 맥락에서 중요한 Connector로는 **URDF Importer**가 있습니다. ROS 생태계에서 표준으로 사용하는 URDF(Unified Robot Description Format) 파일을 Isaac Sim의 USD 기반 씬으로 변환해줍니다. 이 외에도 MJCF(MuJoCo 포맷) Importer가 제공됩니다.
+
+2026년의 배포 경로는 Launcher가 아닌 GitHub·NGC·공식 Python 패키지입니다. 위 계층도는 Isaac Sim을 사용하는 통합 경로를 나타냅니다. Isaac Lab 3.0의 Newton·독립 OV 라이브러리 경로는 Kit/Isaac Sim 없이도 실행됩니다.
 
 ## Isaac Sim과 Omniverse의 관계
 

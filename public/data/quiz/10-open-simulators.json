@@ -73,7 +73,7 @@
   },
   {
     "id": "q7",
-    "question": "Gazebo(현 Ignition Gazebo / Gazebo Sim)와 ROS 2의 관계는?",
+    "question": "현대 Gazebo Sim과 ROS 2의 관계는?",
     "options": [
       "Gazebo는 NVIDIA 전용 시뮬레이터다",
       "Gazebo가 ROS 2의 핵심 물리 엔진으로 내장되어 있다",
@@ -93,7 +93,7 @@
       "강화학습에서 대규모 샘플을 빠르게 수집하여 학습 속도를 크게 향상시키기 위해"
     ],
     "answer": 3,
-    "explanation": "RL은 수백만~수십억 개의 샘플이 필요하므로, GPU 병렬 시뮬레이션으로 수천 개의 환경을 동시 실행하면 학습 시간을 CPU 대비 수십~수백 배 단축할 수 있습니다."
+    "explanation": "GPU 병렬 실행은 많은 환경의 경험을 동시에 수집할 수 있습니다. 가속 배율은 태스크·센서·백엔드·하드웨어·측정 범위를 고정해 측정합니다."
   },
   {
     "id": "q9",
@@ -112,12 +112,12 @@
     "question": "Brax 물리 시뮬레이터의 특징은?",
     "options": [
       "NVIDIA GPU 전용 폐쇄형 시뮬레이터",
-      "Google Brain이 개발한 JAX 기반 완전 차별화 가능(Differentiable) GPU 물리 시뮬레이터",
+      "Google의 JAX 기반 물리·학습 프레임워크로 가속기 병렬 실행과 미분 계산을 지원한다",
       "ROS 2 네이티브 통합 전용 시뮬레이터",
       "점유 격자(Occupancy Grid) 기반 2D 시뮬레이터"
     ],
     "answer": 1,
-    "explanation": "Brax는 Google Brain(현 Google DeepMind)이 JAX로 구현한 GPU 가속 물리 시뮬레이터로, 미분 가능성(Differentiability)을 제공하고 TPU에서도 실행 가능하며 대규모 RL 연구에 사용됩니다."
+    "explanation": "Brax는 JAX 기반 물리·학습 프레임워크입니다. 선택한 백엔드와 연산에 따라 미분·접촉의 지원 범위와 안정성을 확인합니다."
   },
   {
     "id": "q11",

@@ -22,7 +22,15 @@ references:
   - title: "Isaac ROS Object Detection"
     url: "https://nvidia-isaac-ros.github.io/repositories_and_packages/isaac_ros_object_detection/index.html"
     accessed: "2026-06-17"
+  - title: "Isaac Sim 5.1 Replicator lifecycle and BasicWriter"
+    url: "https://docs.isaacsim.omniverse.nvidia.com/5.1.0/replicator_tutorials/tutorial_replicator_getting_started.html"
+    accessed: "2026-10-23"
+  - title: "Isaac ROS current YOLOv8 concept and deployment"
+    url: "https://nvidia-isaac-ros.github.io/concepts/object_detection/yolov8/index.html"
+    accessed: "2026-10-23"
 ---
+
+> **실습 범위**: Replicator 조각은 Isaac Sim 5.1 재현 API이며 5.1은 지원 종료 상태입니다. 새 6.x 프로젝트는 센서·랜덤화 마이그레이션을 적용합니다. 아래 사용자 에셋·데이터 변환·배포 설정은 직접 준비해야 합니다. [합성 데이터 챕터](../../04-isaac-sim/4-6-replicator-synthetic-data/)의 외부 에셋 없는 10프레임 예제로 먼저 저장 경로를 검사합니다.
 
 ## 프로젝트 개요
 
@@ -90,6 +98,8 @@ with rep.new_layer():
 
 ```python
 # 도메인 랜덤화 설정 (개념 이해용 의사코드)
+camera = rep.create.camera(position=(0.5, 0, 0.6), look_at=(0, 0, 0.0))
+
 with rep.trigger.on_frame(num_frames=10000):  # 1만 프레임 생성
 
     # 물체 위치 랜덤화
@@ -131,77 +141,32 @@ with rep.trigger.on_frame(num_frames=10000):  # 1만 프레임 생성
 ## 단계 3: 데이터셋 생성 및 저장
 
 ```python
-# 렌더러 및 어노테이터 설정
-camera = rep.create.camera(resolution=(1280, 720))
-render_product = rep.create.render_product(camera, resolution=(1280, 720))
-
-# 어노테이터: 실제로 저장할 데이터 유형
-rgb_annot = rep.annotators.get("rgb")
-bbox_annot = rep.annotators.get("bounding_box_2d_tight")  # 바운딩 박스
-seg_annot = rep.annotators.get("semantic_segmentation")    # 세그먼테이션 마스크
-depth_annot = rep.annotators.get("distance_to_camera")    # 깊이 맵
-
-rgb_annot.attach(render_product)
-bbox_annot.attach(render_product)
-seg_annot.attach(render_product)
-
-# COCO 형식으로 저장
-writer = rep.WriterRegistry.get("COCOWriter")
+# Isaac Sim 5.1 API fragment: use the scene and camera from prior steps.
+render_product = rep.create.render_product(camera, (1280, 720))
+writer = rep.WriterRegistry.get("BasicWriter")
 writer.initialize(
-    output_dir="/path/to/dataset/",
-    semantic_types=["class"]
+    output_dir="./synthetic_data",
+    rgb=True,
+    bounding_box_2d_tight=True,
+    semantic_segmentation=True,
 )
-writer.attach(render_product)
+writer.attach([render_product])
 
-# 실행
-rep.orchestrator.run()
+for _ in range(10000):
+    rep.orchestrator.step(rt_subframes=4)
+rep.orchestrator.wait_until_complete()
+writer.detach()
 ```
 
-생성된 데이터셋 구조:
+`BasicWriter`의 RGB·NumPy 주석·클래스 매핑을 먼저 확인합니다. COCO Writer는 해당 확장의 설치·등록 여부와 설정이 필요하며 항상 기본 등록되었다고 가정하지 않습니다. Writer가 `instances_train.json`·`instances_val.json`을 자동으로 나누어 준다는 가정도 피합니다.
 
-```text
-dataset/
-├── images/
-│   ├── 000000.png
-│   ├── 000001.png
-│   └── ...          (10,000장)
-├── annotations/
-│   ├── instances_train.json  (COCO 형식)
-│   └── instances_val.json
-└── masks/
-    ├── 000000_semantic.png   (세그먼테이션 마스크)
-    └── ...
-```
+학습기로 옮기려면 COCO 또는 YOLO 변환을 별도로 구현합니다. 박스 좌표의 픽셀/정규화 단위, 가려진 물체 처리, 클래스 ID, segmentation ID 매핑을 검사합니다. 프레임이 인접한 동일 시퀀스는 같은 split에 두어 학습·평가 누출을 줄입니다. 최소 10개 표본에 박스를 그려 RGB와 정렬되는지 확인한 뒤 대규모로 생성합니다.
 
 ## 단계 4: 모델 학습
 
 ### 방법 A: NVIDIA TAO Toolkit 사용
 
-TAO Toolkit은 검출(DetectNet v2, YOLO, RT-DETR), 분류, 세그먼테이션 모델을 명령행에서 쉽게 학습하는 도구입니다.
-
-```bash
-# TAO Toolkit 설치 확인 (실제 설치는 공식 문서 참조)
-tao --version
-
-# YOLOv4 학습 (개념 예시 — 실제 설정 파일 준비 필요)
-tao model yolo_v4 train \
-  -e /path/to/experiment_spec.yaml \
-  -k YOUR_NGC_API_KEY \
-  --gpus 1
-
-# 학습 후 평가
-tao model yolo_v4 evaluate \
-  -e /path/to/experiment_spec.yaml \
-  -k YOUR_NGC_API_KEY \
-  -m /path/to/trained_model.tlt
-
-# TensorRT export
-tao model yolo_v4 export \
-  -e /path/to/experiment_spec.yaml \
-  -k YOUR_NGC_API_KEY \
-  -m /path/to/trained_model.tlt \
-  --engine_file /path/to/output.engine
-```
+TAO는 모델별 데이터 포맷·학습·내보내기 도구를 제공합니다. 설치한 TAO 릴리스의 지원 모델과 quickstart를 선택하고, Replicator 출력을 그 모델의 입력 형식으로 변환합니다. 구버전 YOLOv4의 `-k` 암호화 키를 NGC API 인증 키와 혼동하지 않습니다. 최신 TAO에 과거 `.tlt`·engine 생성 명령을 그대로 적용하지 않습니다.
 
 ### 방법 B: PyTorch + Ultralytics YOLO
 
@@ -231,21 +196,9 @@ model.export(format="onnx", imgsz=640)
 
 학습된 모델을 Isaac ROS 파이프라인에 통합합니다.
 
-```bash
-# TensorRT 엔진 변환 (ONNX에서)
-trtexec \
-  --onnx=yolov8n_synthetic.onnx \
-  --saveEngine=yolov8n_synthetic.engine \
-  --fp16
+앞 단계 `model.export()`가 실제 반환한 ONNX 파일 경로를 기록합니다. 학습 산출물과 관계없는 `yolov8n_synthetic.onnx`가 자동 생성된다고 가정하지 않습니다. TensorRT 10/11의 정밀도 지정 차이는 [Jetson 배포](../12-5-jetson-hardware-deployment/)에서 확인합니다.
 
-# Isaac ROS Object Detection 런치
-ros2 launch isaac_ros_object_detection isaac_ros_yolov8.launch.py \
-  engine_file_path:=/path/to/yolov8n_synthetic.engine \
-  input_binding_names:=["images"] \
-  output_binding_names:=["output0"] \
-  network_image_width:=640 \
-  network_image_height:=640
-```
+Isaac ROS는 선택한 릴리스의 `isaac_ros_yolov8` 또는 해당 검출기 quickstart를 사용합니다. 전처리의 RGB/BGR·letterbox·정규화, ONNX 입출력 이름·shape, 디코더·NMS·클래스 수를 맞춥니다. 엔진 파일 경로만 바꿔도 임의의 검출 모델이 동작하는 범용 launch 파일이 있는 것은 아닙니다. ROS 토픽 이름·타입·발행 주파수와 실제 상자 출력까지 검사합니다.
 
 ## 단계 6: Sim-to-Real 인식 갭 평가
 
@@ -283,7 +236,7 @@ sim-to-real 평가 프로토콜:
 │ 도메인 랜덤화 범위 확대      │ 실제 환경 변수 포함 가능성 증가       │
 │ 실제 배경 이미지 합성         │ 배경 도메인 갭 완화                   │
 │ CutPaste / Mosaic 증강       │ 작은 실제 데이터로 파인튜닝           │
-│ 실제 데이터 소량 추가         │ 10~20% 실제 데이터만으로 크게 향상   │
+│ 실제 데이터 추가              │ 혼합 비율별 실물 검증으로 효과 측정   │
 │ 스타일 전환 (style transfer) │ 합성 이미지를 실제처럼 변환           │
 │ Test-Time Augmentation (TTA) │ 추론 시 여러 변환 적용 후 앙상블      │
 └──────────────────────────────┴───────────────────────────────────────┘

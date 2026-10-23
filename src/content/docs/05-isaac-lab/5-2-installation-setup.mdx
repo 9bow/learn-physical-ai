@@ -20,201 +20,111 @@ references:
   - title: "Isaac Sim System Requirements"
     url: "https://docs.isaacsim.omniverse.nvidia.com/latest/installation/requirements.html"
     accessed: "2026-06-17"
+  - title: "Isaac Lab 3.0.0 release notes"
+    url: "https://github.com/isaac-sim/IsaacLab/releases/tag/v3.0.0"
+    accessed: "2026-10-23"
+  - title: "Isaac Lab 3.0.0 versioned README and compatibility"
+    url: "https://github.com/isaac-sim/IsaacLab/blob/v3.0.0/README.md"
+    accessed: "2026-10-23"
+  - title: "Isaac Lab 2.3.2 pip installation"
+    url: "https://github.com/isaac-sim/IsaacLab/blob/v2.3.2/docs/source/setup/installation/pip_installation.rst"
+    accessed: "2026-10-23"
 ---
 
-## 설치 전 확인사항
+## 3.0과 2.x의 설치 경로 구분
 
-Isaac Lab은 **Isaac Sim**을 시뮬레이션 백엔드로 사용하므로, Isaac Lab을 설치하기 전에 Isaac Sim이 먼저 설치되어 있어야 합니다. 설치 순서를 지키지 않으면 Isaac Lab의 Python 바인딩이 Isaac Sim 런타임을 찾지 못해 오류가 발생합니다.
+**Isaac Lab 3.0.0은 2026-10-20 정식 공개**되었습니다. 새 프로젝트는 버전 태그를 고정한 3.0 설치 경로를 검토합니다. 기존 코스의 `ManagerBasedRLEnvCfg`, Torch 텐서 직접 접근, `isaaclab.sh` 예제는 **2.3.2 재현 경로**입니다. 설치 명령만 3.0으로 바꾸면 기존 코드가 그대로 동작하지 않습니다.
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                   설치 의존성 순서                            │
-│                                                              │
-│  1. 시스템 요구사항 확인                                      │
-│     ├─ NVIDIA GPU (RTX 시리즈 권장, VRAM 8GB+)               │
-│     ├─ CUDA 호환 드라이버                                     │
-│     ├─ Ubuntu 20.04 / 22.04 (공식 지원)                      │
-│     └─ Python 3.10(릴리스에 따라 3.11도 지원)                                           │
-│                                                              │
-│  2. Isaac Sim 설치 (Omniverse Launcher 또는 pip)             │
-│                                                              │
-│  3. Isaac Lab 설치                                           │
-│     ├─ pip 설치 (간편, 개발 불가)                             │
-│     └─ 소스 설치 (개발·커스터마이징 권장)                     │
-│                                                              │
-│  4. 설치 검증                                                 │
-│                                                              │
-│  5. 학습 예제 실행                                            │
-└──────────────────────────────────────────────────────────────┘
-```
-
-## 시스템 요구사항
-
-공식 문서 기준 주요 요구사항은 다음과 같습니다.
-
-| 항목 | 최소 요건 | 권장 |
+| 항목 | Isaac Lab 3.0.0 | 기존 예제: Isaac Lab 2.3.2 |
 |---|---|---|
-| GPU | NVIDIA RTX GPU | RTX 3090 / A100 이상 |
-| VRAM | 8 GB | 24 GB+ (대규모 병렬 학습) |
-| RAM | 32 GB | 64 GB+ |
-| OS | Ubuntu 20.04 | Ubuntu 22.04 |
-| Python | 3.10 | 3.10(릴리스에 따라 3.11도 지원) |
-| CUDA | 드라이버 호환 | 최신 드라이버 |
+| Python | 3.12 | Sim 5.1 조합은 3.11 |
+| 실행 도구 | `uv run isaaclab` | `./isaaclab.sh -p` |
+| 물리 백엔드 | Newton, OVPhysX, Isaac Sim PhysX 등 | Isaac Sim / PhysX |
+| Isaac Sim 의존성 | 선택 사항, 사용 시 6.2 대상 | 이 코스는 Sim 5.1로 고정 |
+| 쿼터니언 | `(x, y, z, w)` | `(w, x, y, z)` |
+| 자산·센서 데이터 | `ProxyArray`, `.torch`/`.warp` 명시 | `torch.Tensor` |
 
-GPU는 Isaac Sim의 실시간 레이트레이싱(RTX)과 PhysX 5 GPU 물리 연산 모두에 사용됩니다. 대규모 병렬 학습(num\_envs 수천 이상)을 목표로 한다면 고성능 GPU가 필수적입니다.
+`main`·`develop`·이동하는 release 브랜치를 임의로 클론하지 않습니다. 소스 태그, Python, 시뮬레이터, RL 라이브러리를 하나의 재현 단위로 기록합니다. 2.3.2 + Sim 5.1은 기존 API를 설명하기 위한 조합이며, 현재 지원되는 최신 운영 환경이라는 뜻은 아닙니다.
 
-## Isaac Sim 설치
+## 새 프로젝트: Isaac Lab 3.0
 
-Isaac Lab 설치 전 Isaac Sim이 준비되어 있어야 합니다. Isaac Sim은 두 가지 방법으로 설치할 수 있습니다.
-
-**방법 1: NVIDIA Omniverse Launcher**
-NVIDIA 개발자 계정으로 로그인 후 Omniverse Launcher를 통해 Isaac Sim을 설치합니다. GUI 기반이며 버전 관리가 편리합니다.
-
-**방법 2: pip 설치 (헤드리스 환경)**
-서버나 클라우드 환경에서 GUI 없이 설치할 때 적합합니다. 공식 문서에서 제공하는 pip 인덱스를 통해 설치합니다. 정확한 명령은 공식 Isaac Sim 설치 가이드를 참조하십시오.
-
-## Isaac Lab 설치
-
-### 소스 설치 (권장)
-
-연구나 커스터마이징이 목적이라면 소스로 설치하는 방법을 권장합니다.
+Ubuntu와 Python 3.12, NVIDIA GPU 드라이버가 준비된 머신에 `uv`를 설치합니다. 아래 명령은 Isaac Lab 3.0 공식 CLI 구조를 따릅니다.
 
 ```bash
-# Isaac Lab 저장소 클론
-git clone https://github.com/isaac-sim/IsaacLab.git
+git clone --branch v3.0.0 --depth 1 https://github.com/isaac-sim/IsaacLab.git
 cd IsaacLab
-
-# Isaac Lab 설치 스크립트 실행
-# 이 스크립트는 의존성 패키지를 Isaac Sim Python 환경에 설치합니다
-./isaaclab.sh --install
+uv run isaaclab train \
+  --rl_library rsl_rl \
+  --task Isaac-Cartpole \
+  physics=newton_mjwarp \
+  --viz newton_gl
 ```
 
-`isaaclab.sh`는 Isaac Lab의 핵심 관리 스크립트입니다. Isaac Sim에 번들된 Python 인터프리터를 사용하여 패키지를 설치하므로, 시스템 Python 환경과 독립적으로 동작합니다.
+이 경로는 Newton 기반이며 Isaac Sim을 시작하지 않습니다. 디스플레이가 없는 서버에서는 선택한 시각화 백엔드의 헤드리스 실행 지침을 적용합니다. 물리·렌더링·시각화는 별도 설정이므로 `--headless`를 구버전에서 복사하지 않습니다.
 
-### 확장 기능 설치
-
-Isaac Lab은 여러 RL 프레임워크와의 연동을 위한 추가 패키지를 지원합니다.
+Isaac Sim ROS Bridge나 Kit 도구가 필요한 경우에는 `isaacsim` extra를 선택합니다.
 
 ```bash
-# RSL-RL 설치
+uv run --extra isaacsim isaaclab train \
+  --rl_library rsl_rl \
+  --task Isaac-Cartpole \
+  physics=isaacsim_physx \
+  --viz kit
+```
+
+Isaac Sim 백엔드의 RTX 하드웨어 요구사항은 [설치와 시스템 요구사항](../../04-isaac-sim/4-1-installation-requirements/)을 따릅니다. Newton 경로의 요구사항을 Isaac Sim 요구사항과 같다고 가정하지 않습니다.
+
+## 기존 예제 재현: Isaac Lab 2.3.2
+
+다음 절차는 **Ubuntu x86_64, Python 3.11, Isaac Sim 5.1** 전용입니다. 3.0 환경과 분리합니다. Omniverse Launcher는 지원 종료되었으므로 사용하지 않습니다.
+
+```bash
+python3.11 -m venv env_isaaclab232
+source env_isaaclab232/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
+python -m pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+git clone --branch v2.3.2 --depth 1 https://github.com/isaac-sim/IsaacLab.git
+cd IsaacLab
 ./isaaclab.sh --install rsl_rl
-
-# rl_games 설치
-./isaaclab.sh --install rl_games
-
-# SKRL 설치
-./isaaclab.sh --install skrl
-
-# 모든 확장 패키지 설치
-./isaaclab.sh --install all
 ```
 
-각 RL 프레임워크는 선택적으로 설치합니다. 학습에 사용할 프레임워크만 설치해도 됩니다.
+`isaaclab.sh`는 활성 가상환경 또는 연결된 Isaac Sim Python을 선택합니다. 항상 번들 Python만 사용한다는 설명은 pip 설치 경로에는 맞지 않습니다. GLIBC 2.35 이상, 호환 드라이버, 사용 가능한 에셋 다운로드 경로도 필요합니다.
 
-## 설치 검증
+## 설치와 첫 학습 검증
 
-설치 완료 후 다음 검증 단계를 수행합니다.
-
-### Python 환경 진입
-
-Isaac Lab은 Isaac Sim 번들 Python을 사용하므로, 스크립트를 실행할 때 항상 `isaaclab.sh`를 통해 진입해야 합니다.
+2.3.2 저장소 루트에서 빈 시뮬레이션과 로봇 자산을 각각 실행합니다. 헤드리스 예제는 계속 실행될 수 있으므로 초기화·스텝 로그를 확인한 뒤 종료합니다.
 
 ```bash
-# Isaac Sim Python 환경으로 스크립트 실행
-./isaaclab.sh -p scripts/tutorials/00_sim/create_empty.py
-```
-
-### 기본 시뮬레이션 확인
-
-```bash
-# 빈 시뮬레이션 씬 생성 테스트
 ./isaaclab.sh -p scripts/tutorials/00_sim/create_empty.py --headless
-```
-
-`--headless` 옵션을 사용하면 GUI 없이 실행할 수 있습니다. 서버 환경에서 학습할 때 필수적입니다.
-
-### 로봇 자산 확인
-
-```bash
-# 관절 로봇 생성 예제
 ./isaaclab.sh -p scripts/tutorials/01_assets/run_articulation.py --headless
 ```
 
-이 스크립트가 오류 없이 실행되면 Isaac Sim과 Isaac Lab 간의 연동이 정상적으로 설정된 것입니다.
-
-## 첫 번째 학습 예제 실행
-
-설치 검증이 완료되면 간단한 강화학습 예제를 실행합니다. 아래는 Isaac Lab이 제공하는 기본 학습 스크립트 실행 흐름입니다.
+첫 학습은 환경 수와 반복 수를 작게 설정합니다.
 
 ```bash
-# RSL-RL을 이용한 Cartpole 학습 예제
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py \
   --task Isaac-Cartpole-v0 \
   --num_envs 64 \
+  --max_iterations 10 \
   --headless
 ```
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                   학습 실행 흐름                              │
-│                                                              │
-│  train.py 실행                                               │
-│       │                                                      │
-│       ▼                                                      │
-│  태스크 레지스트리에서 "Isaac-Cartpole-v0" 검색              │
-│       │                                                      │
-│       ▼                                                      │
-│  환경 설정(EnvCfg) 로드 → Isaac Sim 씬 초기화               │
-│       │                                                      │
-│       ▼                                                      │
-│  64개 병렬 환경 인스턴스 생성 (GPU)                          │
-│       │                                                      │
-│       ▼                                                      │
-│  RSL-RL PPO 에이전트 초기화                                  │
-│       │                                                      │
-│       ▼                                                      │
-│  학습 루프 (수집 → 업데이트 → 로깅)                          │
-│       │                                                      │
-│       ▼                                                      │
-│  체크포인트 저장 (logs/ 디렉터리)                            │
-└──────────────────────────────────────────────────────────────┘
-```
-
-주요 파라미터:
-
-- `--task`: 실행할 태스크 이름 (Isaac Lab 레지스트리에 등록된 환경)
-- `--num_envs`: 동시 실행 환경 수 (GPU VRAM에 따라 조정)
-- `--headless`: GUI 없이 실행
-- `--video`: 학습 중 비디오 녹화 활성화
-
-## 학습 결과 확인
-
-학습 로그는 기본적으로 `logs/` 디렉터리에 저장됩니다. TensorBoard로 확인할 수 있습니다.
-
-```bash
-# TensorBoard 실행
-tensorboard --logdir logs/
-```
-
-학습이 완료된 정책을 평가(play)하려면:
+초기 smoke test는 설치·샘플 수집·업데이트·체크포인트 저장 경로를 검사합니다. 10회 반복만으로 충분한 정책 성능이 확보된다는 뜻은 아닙니다. 로그 경로를 기록하고, 실제 생성된 체크포인트를 평가 명령에 전달합니다.
 
 ```bash
 ./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/play.py \
   --task Isaac-Cartpole-v0 \
   --num_envs 32 \
-  --checkpoint /path/to/checkpoint.pt
+  --checkpoint /absolute/path/to/model_10.pt
 ```
 
-## 헤드리스 vs GUI 모드
+카메라 태스크는 2.x에서 `--enable_cameras`를 추가합니다. 비디오 녹화도 렌더링을 사용하므로 VRAM·실행 속도를 다시 측정합니다. 헤드리스 실행에 Xvfb가 항상 필요한 것은 아닙니다.
 
-| 모드 | 사용 상황 | 주의사항 |
-|---|---|---|
-| GUI 모드 | 환경 디버깅, 시각화 확인 | 로컬 머신 필요 |
-| 헤드리스 모드 | 서버 학습, 대규모 실험 | X 서버 불필요 |
-| 가상 디스플레이 | 서버에서 렌더링 필요 시 | Xvfb 설정 필요 |
+## 3.0 마이그레이션 검증
 
-서버 환경에서 카메라 센서가 포함된 환경을 학습하려면 가상 디스플레이(Xvfb)나 EGL(오프스크린 렌더링) 설정이 필요할 수 있습니다. 정확한 설정은 공식 문서의 "Headless Execution" 섹션을 참조하십시오.
+3.0은 태스크 식별자·환경 구성·명령줄 구조도 바꿉니다. `Isaac-Cartpole-v0`를 새 CLI에 그대로 넘기지 않습니다. `isaaclab.sh`는 사용 중단 예정이며 새 워크플로는 `uv`를 사용합니다.
 
-## 소결
+쿼터니언은 초기 자세·리셋·목표·관측을 모두 XYZW로 옮깁니다. 항등 회전은 `(1, 0, 0, 0)`에서 `(0, 0, 0, 1)`로 바뀝니다. 자산 상태는 `robot.data.root_pos_w.torch`처럼 접근하며, 시뮬레이터에 쓰는 인덱스와 마스크도 새 API에 맞춥니다.
 
-Isaac Lab 설치는 Isaac Sim 선설치 → Isaac Lab 소스 클론 → 설치 스크립트 실행 → 검증 → 예제 실행의 순서로 진행됩니다. `isaaclab.sh` 스크립트가 환경 관리의 핵심 도구이며, 모든 실행은 이 스크립트를 통해 Isaac Sim 번들 Python 환경을 사용합니다. 다음 챕터에서는 Isaac Lab 환경 설계의 두 가지 핵심 패러다임인 Manager-based와 Direct 방식을 비교합니다.
+버전 이동 후에는 같은 초기 상태에서 관측 차원·좌표계·접촉·종료 조건을 비교합니다. 기존 체크포인트를 새 환경에 로드할 수 있다는 사실만으로 동작 동등성이 입증되지는 않습니다.

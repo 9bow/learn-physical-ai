@@ -22,6 +22,8 @@ references:
     accessed: "2026-06-17"
 ---
 
+> **실습 버전**: 아래 `isaaclab.sh`·환경 구성·Torch 텐서 예제는 Isaac Lab 2.3.2 + Isaac Sim 5.1 경로입니다. 지원이 종료된 Sim 5.1 예제의 재현 범위이며, 새 프로젝트는 [3.0 설치 및 마이그레이션](../../05-isaac-lab/5-2-installation-setup/)을 참고합니다. 3.0에서는 CLI·쿼터니언 순서·데이터 API가 바뀝니다.
+
 ## 두 가지 환경 설계 패러다임
 
 Isaac Lab은 로봇 학습 환경을 구현하는 두 가지 방식을 공식적으로 지원합니다. **Manager-based 환경**과 **Direct 환경**입니다. 두 방식 모두 동일한 Isaac Lab 인프라(GPU 병렬화, Isaac Sim 물리)를 활용하지만, 코드 구조와 설계 철학이 다릅니다.
